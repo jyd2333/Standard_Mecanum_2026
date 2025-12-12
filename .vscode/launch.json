@@ -1,0 +1,61 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "cwd": "${workspaceFolder}",
+            "executable": "./bin/executable.elf",
+            "name": "Debug with JLink",
+            "request": "launch",
+            "type": "cortex-debug",
+            "device": "",
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "none",
+            "servertype": "jlink"
+        },
+        {
+            "cwd": "C:\\Users\\13328\\Desktop\\OpenOCD-20240916-0.12.0\\bin",
+            "executable": "C:\\Users\\13328\\Desktop\\HERO\\DZX\\build\\Debug",
+            "name": "Debug with OpenOCD",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            "configFiles": ["cmsis-dap.cfg"],
+            "searchDir": [],
+            "runToEntryPoint": "main",
+            "showDevDebugOutput": "none"
+            
+        },
+        {
+            "cwd": "${workspaceRoot}",
+            "type": "cortex-debug",
+            "request": "launch",
+            "name": "jlink",
+            "servertype": "jlink",
+            "interface": "swd",
+            "executable": "build\\Debug\\basic_framework.elf",
+            "runToEntryPoint": "main",
+            "device": "STM32F407IG",
+            "toolchainPrefix": "arm-none-eabi",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            }
+        },
+        {
+            "cwd": "${workspaceRoot}",
+            "type": "cortex-debug",
+            "request": "attach",
+            "name": "jlink-attach",
+            "servertype": "jlink",
+            "interface": "swd",
+            "executable": "build\\Debug\\basic_framework.elf",
+            "runToEntryPoint": "main",
+            "device": "STM32F407IG",
+            "toolchainPrefix": "arm-none-eabi",
+            "liveWatch": {
+                "enabled": true,
+                "samplesPerSecond": 4
+            }
+        }
+    ]
+}
