@@ -6,6 +6,8 @@
 #include "step_motor.h"
 #include "servo_motor.h"
 #include "robot_def.h"
+#include "DMmotor.h"
+
 uint16_t g_cmd_set   = 2;
 uint16_t* g_power_set=3000 ;
 uint16_t g_vout_set  = 2300;
@@ -178,7 +180,7 @@ void MotorControlTask()
 	// cnt=(cnt+1)%10;
 	#endif
     DJIMotorControl();
-    
+    DMMotorControl();
     /* 如果有对应的电机则取消注释,可以加入条件编译或者register对应的idx判断是否注册了电机 */
     // DRMotorControl();
     // LKMotorControl();

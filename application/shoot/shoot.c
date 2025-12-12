@@ -266,7 +266,7 @@ void ShootInit()
 
     // DJIMotorStop(loader);
 
-    Motor_Init_Config_s joint_motor_config = {
+    Motor_Init_Config_s loader_motor_config = {
         .can_init_config = {
             .can_handle = &hcan2,
             .tx_id = 0x01,
@@ -276,11 +276,13 @@ void ShootInit()
         .controller_setting_init_config = {
             .control_range = {
                 .P_max = 12.5,
-                .V_max = 10,
-                .T_max = 28,
+                .V_max = 30,
+                .T_max = 10,
             },
         },
     };
+    loader = DMMotorInit(&loader_motor_config);
+    DMMotorStop(loader);
 
 #endif
     shoot_cmd_recv.shoot_mode = SHOOT_ON; // 初始化后摩擦轮进入准备模式,也可将右拨杆拨至上一次来手动开启
@@ -446,6 +448,7 @@ void ShootTask()
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
         // DJIMotorStop(loader);
         // DM_enable_flag = 0;
+        DMMotorStop(loader);
 #endif
     } else // 恢复运行
     {
@@ -462,6 +465,7 @@ void ShootTask()
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
         // DJIMotorEnable(loader);
         // DM_enable_flag = 1;
+        DMMotorEnable1(loader);
 #endif
     }
     // 调试内容；模拟单发
@@ -619,6 +623,8 @@ void ShootTask()
     shoot_speed  = fric_speed;
     shoot2_speed = fric2_speed;
 #endif
+    loader->ctrl.kd_set = 2;
+    loader->ctrl.vel_set = 1;
     // 反馈数据
     memcpy(&shoot_feedback_data.shooter_local_heat, &local_heat, sizeof(float));
     memcpy(&shoot_feedback_data.shooter_heat_control, &heat_control, sizeof(int));
