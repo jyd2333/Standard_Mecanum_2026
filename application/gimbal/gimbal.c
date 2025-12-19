@@ -23,7 +23,7 @@ float pitch_current_feedforward,K_pitch_current_feedforward,B_pitch_current_feed
 extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
 float yaw_gyro_twoboard=0,yaw_current_feedforward;
 Motor_PID_Setting_s pitch_PID,yaw_PID;
-float pitch_offset;
+const float pitch_offset = 7.7f;
 // static PID_Setting_s pitch_settings,yaw_settings;
 // extern float imu_angle[3];
 // extern float imu_gyro[3];
@@ -130,8 +130,8 @@ void GimbalInit()
                 .MaxOut = 5,
             },
             .speed_PID = {
-                .Kp            = 2000,//3000,//4000,//5500, //4020,//7000, // 18000, // 10500,//1000,//10000,// 11000
-                .Ki            = 0,    // 0
+                .Kp            = 9000, // 18000, // 10500,//1000,//10000,// 11000
+                .Ki            = 7000,    // 0
                 .Kd            = 0,    // 10, // 30
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement | PID_OutputFilter,
                 .IntegralLimit = 12000,
@@ -144,21 +144,21 @@ void GimbalInit()
             // ?????????????????????,?????,ins_task.md????c???bodyframe????????
             .other_speed_feedback_ptr = &chassis_rs485_recv.yaw_gyro,//&yaw_gyro_twoboard,//&chassis_rs485_recv.yaw_gyro-&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],//,&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],
             .current_feedforward_ptr=&yaw_current_feedforward,
-            .speed_feedforward_ptr=&yaw_speedFeed,
+            //.speed_feedforward_ptr=&yaw_speedFeed,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
             .speed_feedback_source = OTHER_FEED,
-            .outer_loop_type       = ANGLE_LOOP,//ANGLE_LOOP,
-            .close_loop_type       = ANGLE_LOOP|SPEED_LOOP,//ANGLE_LOOP | SPEED_LOOP,
+            .outer_loop_type       = ANGLE_LOOP,
+            .close_loop_type       = ANGLE_LOOP | SPEED_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
-            .feedforward_flag=CURRENT_FEEDFORWARD,
+            .feedforward_flag  =CURRENT_FEEDFORWARD,
         },
         .motor_type = GM6020};
         yaw_motor   = DJIMotorInit(&yaw_config);
         #endif
         #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
-    // PITCH
+         // PITCH
     //gyro
     pitch_PID.gyro_mode.angle_PID.Kp = 1;
     pitch_PID.gyro_mode.angle_PID.Ki = 0.5;
@@ -182,9 +182,6 @@ void GimbalInit()
     pitch_PID.motor_mode.speed_PID.IntegralLimit = 1000;
     pitch_PID.motor_mode.speed_PID.MaxOut = 3000;
 
-    if(PITCH_HORIZON_ECD<4096) pitch_offset = (float)PITCH_HORIZON_ECD / 8192 * 360;
-    else pitch_offset = (float)(PITCH_HORIZON_ECD-8192) / 8192 * 360;
-
     Motor_Init_Config_s pitch_config = {
         .can_init_config = {
             .can_handle = &hcan1,
@@ -192,21 +189,21 @@ void GimbalInit()
         },
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp            = pitch_PID.gyro_mode.angle_PID.Kp,//1,//0.16,//13, // 35, // 40, // 10
-                .Ki            = pitch_PID.gyro_mode.angle_PID.Ki,//0.5,
-                .Kd            = pitch_PID.gyro_mode.angle_PID.Kd,//0.1,
+                .Kp            = 2.1 ,//0.16,//13, // 35, // 40, // 10
+                .Ki            = 0,//0.5,
+                .Kd            = 0,//0.1,
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit  | PID_Derivative_On_Measurement,
-                .IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit,//5,//10,
-                .MaxOut        = pitch_PID.gyro_mode.angle_PID.MaxOut,//5,
+                .IntegralLimit = 0,//5,//10,
+                .MaxOut        = 5,
                 
             },
             .speed_PID = {
-                .Kp            = pitch_PID.gyro_mode.speed_PID.Kp,//3000,//7500,//100,//6000, // 10500, // 13000,//10500,  // 10500
-                .Ki            = pitch_PID.gyro_mode.speed_PID.Ki,//1000,//2000, // 10000, // 10000
-                .Kd            = pitch_PID.gyro_mode.speed_PID.Kd,//5,    // 0
+                .Kp            = 18000,//7500,//100,//6000, // 10500, // 13000,//10500,  // 10500
+                .Ki            = 2000,//1000,//2000, // 10000, // 10000
+                .Kd            = 0,//5,    // 0
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement ,//| PID_ChangingIntegrationRate |PID_OutputFilter,
-                .IntegralLimit = pitch_PID.gyro_mode.speed_PID.IntegralLimit,//8000,
-                .MaxOut        = pitch_PID.gyro_mode.speed_PID.MaxOut,//3000,//16384,//24000,
+                .IntegralLimit = 3000,
+                .MaxOut        = 16384,//24000,
                 // .CoefA=1,
                 // .CoefB=3,
                 // .Output_LPF_RC=0.7,
@@ -214,8 +211,8 @@ void GimbalInit()
             },
             .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle_deg[1], // pitch?????????
             // ?????????????????????,?????,ins_task.md????c???bodyframe????????
-           .other_speed_feedback_ptr =&gimbal_IMU_data->INS_data.INS_gyro[0],
-           .current_feedforward_ptr=&pitch_current_feedforward,
+           .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[1],
+           .current_feedforward_ptr= &pitch_current_feedforward,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
@@ -223,87 +220,87 @@ void GimbalInit()
             .outer_loop_type       = ANGLE_LOOP,
             .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
-            // .feedforward_flag=CURRENT_FEEDFORWARD,
+            .feedforward_flag      = CURRENT_FEEDFORWARD,
         },
         .motor_type = GM6020,
        
     }; 
-    // pitch_motor = DJIMotorInit(&pitch_config);
-
-    Motor_Init_Config_s fpv_pitch_config = {
-        .can_init_config = {
-            .can_handle = &hcan1,
-            .tx_id = 1,
-        },
-        .controller_param_init_config = {
-            .angle_PID = {
-                .Kp            = 10,
-                .Ki            = 0,
-                .Kd            = 0,
-                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit  | PID_Derivative_On_Measurement,
-                .IntegralLimit = 10,
-                .MaxOut        = 10000,//5,
+    pitch_motor = DJIMotorInit(&pitch_config);
+    DJIMotorStop(pitch_motor);
+    // Motor_Init_Config_s fpv_pitch_config = {
+    //     .can_init_config = {
+    //         .can_handle = &hcan1,
+    //         .tx_id = 1,
+    //     },
+    //     .controller_param_init_config = {
+    //         .angle_PID = {
+    //             .Kp            = 10,
+    //             .Ki            = 0,
+    //             .Kd            = 0,
+    //             .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit  | PID_Derivative_On_Measurement,
+    //             .IntegralLimit = 10,
+    //             .MaxOut        = 10000,//5,
                 
-            },
-            .speed_PID = {
-                .Kp            = 1,
-                .Ki            = 0,
-                .Kd            = 0,    
-                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_ChangingIntegrationRate |PID_OutputFilter,
-                .IntegralLimit = 1000,
-                .MaxOut        = 5000,
-            },
+    //         },
+    //         .speed_PID = {
+    //             .Kp            = 1,
+    //             .Ki            = 0,
+    //             .Kd            = 0,    
+    //             .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_ChangingIntegrationRate |PID_OutputFilter,
+    //             .IntegralLimit = 1000,
+    //             .MaxOut        = 5000,
+    //         },
             
-        },
-        .controller_setting_init_config = {
-            .angle_feedback_source = MOTOR_FEED,
-            .speed_feedback_source = MOTOR_FEED,
-            .outer_loop_type       = ANGLE_LOOP,
-            .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
-            .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
-            // .feedforward_flag=CURRENT_FEEDFORWARD,
-        },
-        .motor_type = M2006,
+    //     },
+    //     .controller_setting_init_config = {
+    //         .angle_feedback_source = MOTOR_FEED,
+    //         .speed_feedback_source = MOTOR_FEED,
+    //         .outer_loop_type       = ANGLE_LOOP,
+    //         .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
+    //         .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
+    //         // .feedforward_flag=CURRENT_FEEDFORWARD,
+    //     },
+    //     .motor_type = M2006,
 
-    }; 
-    // fpv_pitch_motor = DJIMotorInit(&fpv_pitch_config);
+    // }; 
+    // // fpv_pitch_motor = DJIMotorInit(&fpv_pitch_config);
 
-    Motor_Init_Config_s telescope_config = {
-        .can_init_config = {
-            .can_handle = &hcan1,
-            .tx_id = 3,
-        },
-        .controller_param_init_config = {
-            .angle_PID = {
-                .Kp            = 10,//0.16,//13, // 35, // 40, // 10
-                .Ki            = 0,
-                .Kd            = 0,
-                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit  | PID_Derivative_On_Measurement,
-                .IntegralLimit = 10,//10,
-                .MaxOut        = 10000,
+    // Motor_Init_Config_s telescope_config = {
+    //     .can_init_config = {
+    //         .can_handle = &hcan1,
+    //         .tx_id = 3,
+    //     },
+    //     .controller_param_init_config = {
+    //         .angle_PID = {
+    //             .Kp            = 10,//0.16,//13, // 35, // 40, // 10
+    //             .Ki            = 0,
+    //             .Kd            = 0,
+    //             .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit  | PID_Derivative_On_Measurement,
+    //             .IntegralLimit = 10,//10,
+    //             .MaxOut        = 10000,
                 
-            },
-            .speed_PID = {
-                .Kp            = 1,//7500,//100,//6000, // 10500, // 13000,//10500,  // 10500
-                .Ki            = 0,//2000, // 10000, // 10000
-                .Kd            = 0,    // 0
-                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement ,//| PID_ChangingIntegrationRate |PID_OutputFilter,
-                .IntegralLimit = 1000,
-                .MaxOut        = 5000,//24000,
-            },
+    //         },
+    //         .speed_PID = {
+    //             .Kp            = 1,//7500,//100,//6000, // 10500, // 13000,//10500,  // 10500
+    //             .Ki            = 0,//2000, // 10000, // 10000
+    //             .Kd            = 0,    // 0
+    //             .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement ,//| PID_ChangingIntegrationRate |PID_OutputFilter,
+    //             .IntegralLimit = 1000,
+    //             .MaxOut        = 5000,//24000,
+    //         },
             
-        },
-        .controller_setting_init_config = {
-            .angle_feedback_source = MOTOR_FEED,
-            .speed_feedback_source = MOTOR_FEED,
-            .outer_loop_type       = ANGLE_LOOP,
-            .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
-            .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
-            // .feedforward_flag=CURRENT_FEEDFORWARD,
-        },
-        .motor_type = M2006,
+    //     },
+    //     .controller_setting_init_config = {
+    //         .angle_feedback_source = MOTOR_FEED,
+    //         .speed_feedback_source = MOTOR_FEED,
+    //         .outer_loop_type       = ANGLE_LOOP,
+    //         .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
+    //         .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
+    //         // .feedforward_flag=CURRENT_FEEDFORWARD,
+    //     },
+    //     .motor_type = M2006,
 
-    };
+    // };
     // telescope_motor = DJIMotorInit(&telescope_config);
     // NUC
     // Motor_Init_Config_s nuc_config = {
@@ -333,15 +330,8 @@ double nonlinear(const double x) {
     return out * (Y_MAX - Y_MIN) + Y_MIN;
 }
 
-double PitchNonlinear(const double x) {
-#define X_MIN (-1)
-#define X_MAX 1
-#define Y_MIN (-5000)
-#define Y_MAX 500
-
-    const double scaled = (x - X_MIN) / (X_MAX - X_MIN) * 4.0 - 2.0;
-    const double out = (tanh(scaled) + 1.0) / 2.0;
-    return out * (Y_MAX - Y_MIN) + Y_MIN;
+float PitchNonlinear(float x) {
+    return (215.65 * x -3050.0);
 }
 
 // ???????????
@@ -388,6 +378,23 @@ double evaluate_spline(const double x) {
 
     return y;
 }
+
+static float YawFeedForwardCalculate(float direction)
+{
+    if (direction > 1e-6)
+    {
+        yaw_current_feedforward = 4000;
+    }
+    else if (direction < -1e-6)
+    {
+        yaw_current_feedforward = -4000;
+    }
+    else
+    {
+        yaw_current_feedforward = 0;
+    }
+}
+
 // static PIDInstance YAW_version_PID = {
 //     .Kp            = 1,   // 25,//25, // 50,//70, // 4.5
 //     .Ki            = 0,    // 0
@@ -446,7 +453,7 @@ void GimbalTask()
     // ????????????§Ö???????§Ý??????,???????robot_cmd??????????¨²?,gimbal???yaw_ref??pitch_ref
     #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)        
     // yaw_gyro_twoboard=chassis_rs485_recv.yaw_gyro-gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET];
-    yaw_current_feedforward=nonlinear(yaw_motor->motor_controller.angle_PID.Err);
+    //yaw_current_feedforward=nonlinear(yaw_motor->motor_controller.angle_PID.Err);
     
     // if(!gimbal_cmd_recv.yaw_speedFeed)
     // yaw_speedFeed=1.25;
@@ -468,7 +475,7 @@ void GimbalTask()
             DJIMotorEnable(yaw_motor);
             DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP, OTHER_FEED);
             DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
-            DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw??pitch????robot_cmd?§Õ???????????
+            DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw);
             break;
         case GIMBAL_MOTOR_MODE:
             DJIMotorEnable(yaw_motor);
@@ -479,6 +486,8 @@ void GimbalTask()
         default:
             break;
     }
+
+
     gimbal_feedback_data.yaw_angle_pidout             =yaw_motor->motor_controller.angle_PID.Output;
     gimbal_feedback_data.gimbal_imu_data              = gimbal_IMU_data;
     gimbal_feedback_data.yaw_motor_single_round_angle = (uint16_t)yaw_motor->measure.angle_single_round; // ???????
@@ -487,11 +496,13 @@ void GimbalTask()
     gimbal_feedback_data.yaw_total_angle              = yaw_motor->measure.total_angle;
     gimbal_feedback_data.pitch_total_angle            = 0;//pitch_motor->measure.total_angle;
     
+
+    //yaw_current_feedforward = YawFeedForwardCalculate(yaw_motor->motor_controller.angle_PID.Err);
     #endif
     #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     #ifndef pitch_motor->motor_controller.angle_PID.IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit;
-            pitch_motor->motor_controller.angle_PID.MaxOut = pitch_PID.gyro_mode.angle_PID.MaxOut;
-    pitch_current_feedforward=PitchNonlinear(pitch_motor->motor_controller.angle_PID.Err);
+    
+    pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
     switch (gimbal_cmd_recv.gimbal_mode) {
         // ??
         case GIMBAL_ZERO_FORCE:
@@ -511,19 +522,20 @@ void GimbalTask()
             // DJIMotorOuterLoop(fpv_pitch_motor, ANGLE_LOOP);
             // DJIMotorChangeFeed(telescope_motor,ANGLE_LOOP, MOTOR_FEED);
             // DJIMotorOuterLoop(telescope_motor, ANGLE_LOOP);
-            pitch_motor->motor_controller.angle_PID.Kp = pitch_PID.gyro_mode.angle_PID.Kp;
-            pitch_motor->motor_controller.angle_PID.Ki = pitch_PID.gyro_mode.angle_PID.Ki;
-            pitch_motor->motor_controller.angle_PID.Kd = pitch_PID.gyro_mode.angle_PID.Kd;
-            pitch_motor->motor_controller.angle_PID.IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit;
-            pitch_motor->motor_controller.angle_PID.MaxOut = pitch_PID.gyro_mode.angle_PID.MaxOut;
-            pitch_motor->motor_controller.speed_PID.Kp = pitch_PID.gyro_mode.speed_PID.Kp;
-            pitch_motor->motor_controller.speed_PID.Ki = pitch_PID.gyro_mode.speed_PID.Ki;
-            pitch_motor->motor_controller.speed_PID.Kd = pitch_PID.gyro_mode.speed_PID.Kd;
-            pitch_motor->motor_controller.speed_PID.IntegralLimit = pitch_PID.gyro_mode.speed_PID.IntegralLimit;
-            pitch_motor->motor_controller.speed_PID.MaxOut = pitch_PID.gyro_mode.speed_PID.MaxOut;
-            DJIMotorSetRef(pitch_motor,gimbal_cmd_recv.pitch);
+            // pitch_motor->motor_controller.angle_PID.Kp = pitch_PID.gyro_mode.angle_PID.Kp;
+            // pitch_motor->motor_controller.angle_PID.Ki = pitch_PID.gyro_mode.angle_PID.Ki;
+            // pitch_motor->motor_controller.angle_PID.Kd = pitch_PID.gyro_mode.angle_PID.Kd;
+            // pitch_motor->motor_controller.angle_PID.IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit;
+            // pitch_motor->motor_controller.angle_PID.MaxOut = pitch_PID.gyro_mode.angle_PID.MaxOut;
+            // pitch_motor->motor_controller.speed_PID.Kp = pitch_PID.gyro_mode.speed_PID.Kp;
+            // pitch_motor->motor_controller.speed_PID.Ki = pitch_PID.gyro_mode.speed_PID.Ki;
+            // pitch_motor->motor_controller.speed_PID.Kd = pitch_PID.gyro_mode.speed_PID.Kd;
+            // pitch_motor->motor_controller.speed_PID.IntegralLimit = pitch_PID.gyro_mode.speed_PID.IntegralLimit;
+            // pitch_motor->motor_controller.speed_PID.MaxOut = pitch_PID.gyro_mode.speed_PID.MaxOut;
+            DJIMotorSetRef(pitch_motor,pitch_offset + gimbal_cmd_recv.pitch);
             // DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_test);
             // DJIMotorSetRef(telescope_motor,telescope_test);
+           
             switch(fpv_state)
             {
                 case 0:
@@ -628,6 +640,7 @@ void GimbalTask()
         default:
             break;
     }
+    
     #endif // !BIG_HEAD
     #ifdef BIG_HEAD
     pitch_current_feedforward=-exp((352-gimbal_IMU_data->output.INS_angle_deg[0])/40);

@@ -592,8 +592,8 @@ static void PitchAngleLimit()
 {
     float limit_min, limit_max;
 #if PITCH_INS_FEED_TYPE
-    limit_min = PITCH_LIMIT_ANGLE_DOWN * DEGREE_2_RAD;
-    limit_max = PITCH_LIMIT_ANGLE_UP * DEGREE_2_RAD;
+    limit_min = -20.0f;//PITCH_LIMIT_ANGLE_DOWN * DEGREE_2_RAD;
+    limit_max = 37.0f;//PITCH_LIMIT_ANGLE_UP * DEGREE_2_RAD;
 #else
     limit_min = -24;//PITCH_LIMIT_ANGLE_DOWN;
     limit_max = 34;//PITCH_LIMIT_ANGLE_UP;
@@ -801,7 +801,7 @@ static void RemoteControlSet()
         default:
             break;
     }
-if (rc_data[TEMP].rc.dial > 400) {
+    if (rc_data[TEMP].rc.dial > 400) {
         SuperCap_flag_from_user = SUPER_USER_OPEN;
         gimbal_cmd_send.nuc_mode=version_control;
         if(fabs(gimbal_cmd_send.pitch_version)<16)pitch_control-=PIDCalculate(&PITCH_version_PID,gimbal_cmd_send.pitch_version,0);
@@ -812,9 +812,7 @@ if (rc_data[TEMP].rc.dial > 400) {
         // yaw_control-=PIDCalculate(&YAW_version_PID,gimbal_cmd_send.yaw_version,0);
         //yaw_control=imu_angle[2]+gimbal_cmd_send.yaw_version;
         // gimbal_cmd_send.yaw_version=0;
-        // gimbal_cmd_send.pitch_version=low_pass_filiter(gimbal_cmd_send.pitch_version);
-        // pitch_control=gimbal_fetch_data.gimbal_imu_data->output.INS_angle_deg[1]+PIDCalculate(&PITCH_version_PID,gimbal_cmd_send.pitch_version,0);
-        // pitch_control=gimbal_fetch_data.gimbal_imu_data->output.INS_angle_deg[1]-gimbal_cmd_send.pitch_version;
+        gimbal_cmd_send.pitch_version=low_pass_filiter(gimbal_cmd_send.pitch_version);
 
     } else {
         gimbal_cmd_send.nuc_mode=none_version_control;
@@ -1148,7 +1146,7 @@ static void MouseKeySet()
     GimbalSet();
     ShootSet();
     KeyGetMode();
-    // PitchAngleLimit();
+    
     PitchAngle_ActiveLimit();
     RobotReset(); // 机器人复位处理
 }
@@ -1445,6 +1443,7 @@ DeterminRobotID();
     } 
     else {
         RemoteControlSet();
+        PitchAngleLimit();
     }
     // 根据gimbal的反馈值计算云台和底盘正方向的夹角,不需要传参,通过static私有变量完成
     // gimbal_fetch_data.yaw_motor_single_round_angle=chassis_fetch_data_uart.yaw_motor_single_round_angle;

@@ -163,6 +163,7 @@ void MX_FREERTOS_Init(void) {
     /* creation of Shoot */
   ShootHandle = osThreadNew(_ShootTask, NULL, &Shoot_attributes);
   /* creation of Gimbal */
+
  GimbalHandle = osThreadNew(_GimbalTask, NULL, &Gimbal_attributes);
  #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
   /* creation of instask */

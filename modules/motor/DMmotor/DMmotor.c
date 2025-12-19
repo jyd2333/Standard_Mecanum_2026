@@ -70,17 +70,29 @@ static void DMMotorDecode(CANInstance *_instance)
 	measure->tor = uint_to_float(measure->t_int, -motor->motor_settings.control_range.T_max, motor->motor_settings.control_range.T_max, 12);  // (-18.0,18.0)
 	measure->Tmos = (float)(rx_buff[6]);
 	measure->Tcoil = (float)(rx_buff[7]);
-   
+
+    if(measure->pos - measure->last_pos < -12.5f)
+    {
+        measure->total_round ++;
+    }
+    else if (measure->pos - measure->last_pos > 12.5)
+    {
+        measure->total_round --;
+    }
+    measure->total_position = measure->pos + measure->total_round * 25.0f;
+    measure->last_pos = measure->pos;
 
     DMMotorErrorDetection(motor);
 }
 
 static void DMMotorLostCallback(void *motor_ptr)
 {
-    DMMotorInstance *motor = (DMMotorInstance *)motor_ptr;
-    LOGWARNING("[DMMotor] motor lost, id: %d", (motor->motor_can_instance->tx_id & (0x1f<<5)) >> 5);
-
-    
+    if (motor_ptr != NULL)
+    {
+        DMMotorInstance *motor = (DMMotorInstance *)motor_ptr;
+        motor->measure.total_round = 0;
+        motor->ctrl.pos_set = motor->measure.pos;
+    }
 }
 
 DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config)

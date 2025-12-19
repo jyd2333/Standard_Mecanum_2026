@@ -10,7 +10,7 @@
 #include "DMmotor.h"
 
 /* 对于双发射机构的机器人,将下面的数据封装成结构体即可,生成两份shoot应用实例 */
-static DJIMotorInstance *friction_l, *friction_r, *friction_l2, *friction_up, *friction_up2, *friction_r2; // 拨盘电机
+static DJIMotorInstance *friction_l, *friction_up2; // 拨盘电机
 // float DM_4310_speed_target = 0;                                                                                             // DM电机目标
 // int DM_enable_flag         = 0;                                                                                             // DM电机指令,1转0停
 static Publisher_t *shoot_pub;
@@ -27,7 +27,7 @@ int32_t shoot_count;                     // 已发弹量
 #define BUTTON_PRESSED    GPIO_PIN_RESET // 按键按下时引脚电平，通常为低电平
 #define BUTTON_RELEASED   GPIO_PIN_SET   // 按键释放时引脚电平，通常为高电平
 int load_speed           = 15000;
-float shoot_speed_target = 20000, shoot2_speed_target = 20000, limit_speed_target = 400;
+float shoot_speed_target = 30000, shoot2_speed_target = 30000, limit_speed_target = 400;
 // 定义按键状态
 typedef enum {
     BUTTON_STATE_IDLE,     // 按键未按下状态
@@ -106,6 +106,9 @@ float friction_feedforwardl = 83, friction_feedforwardr = -67, friction_feedforw
 
 DMMotorInstance *loader;
 
+static const float loader_offset_angle = 16.8;
+static float current_angle;
+
 void ShootInit()
 {
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
@@ -136,33 +139,14 @@ void ShootInit()
         },
         .motor_type = M3508};
 
-    friction_config.can_init_config.tx_id                                = 4; // 右摩擦轮,改txid和方向就行
-    friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_REVERSE;
-    friction_r                                                           = DJIMotorInit(&friction_config);
-    friction_config.can_init_config.tx_id                                = 5;
-    friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_REVERSE;
-    friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardr2;
-    friction_r2                                                          = DJIMotorInit(&friction_config);
     friction_config.can_init_config.tx_id                                = 2; // 左摩擦轮,改txid和方向就行
     friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_REVERSE;
     friction_l                                                           = DJIMotorInit(&friction_config);
-    friction_config.can_init_config.tx_id                                = 6; // 右摩擦轮,改txid和方向就行
-    friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_REVERSE;
-    friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardl2;
-    friction_l2                                                          = DJIMotorInit(&friction_config);
-    // 三摩擦轮外加电机
-    friction_config.can_init_config.tx_id                             = 3;
-    friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
-    friction_up                                                       = DJIMotorInit(&friction_config);
     // 三摩擦轮外加电机
     friction_config.can_init_config.tx_id                             = 1;
     friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     friction_up2                                                      = DJIMotorInit(&friction_config);
     DJIMotorStop(friction_l);
-    DJIMotorStop(friction_r);
-    DJIMotorStop(friction_l2);
-    DJIMotorStop(friction_r2);
-    DJIMotorStop(friction_up);
     DJIMotorStop(friction_up2);
     // 限位电机
     // Motor_Init_Config_s limit_config = {
@@ -269,7 +253,7 @@ void ShootInit()
     Motor_Init_Config_s loader_motor_config = {
         .can_init_config = {
             .can_handle = &hcan2,
-            .tx_id = 0x01,
+            .tx_id = 0x101,
             .rx_id = 0x11,
         },
         .motor_type = DM_4310,
@@ -280,6 +264,7 @@ void ShootInit()
                 .T_max = 10,
             },
         },
+        .motor_contro_type = ANGLE_LOOP_CONTRO,
     };
     loader = DMMotorInit(&loader_motor_config);
     DMMotorStop(loader);
@@ -399,6 +384,17 @@ static void Shoot_Fric_data_process(void)
     }
 }
 
+static float CalculateNextAngle(float current_angle)
+{
+    const float angle_step = PI / 3.0f;
+    float target_angle, temp;
+    uint16_t number;//与正方向相差几个PI/3
+    temp = loader_offset_angle - current_angle + 0.2;
+    number = (uint16_t)(temp / angle_step);
+    target_angle = loader_offset_angle - ((float)(number + 1) * angle_step);
+    return target_angle;
+}
+
 static int one_bullet;
 static ramp_t fric_on_ramp, fric2_on_ramp;
 static ramp_t fric_off_ramp, fric2_off_ramp;
@@ -411,6 +407,7 @@ float diff1, diff2;
 uint8_t loadmode;
 float pid_kp = 1;
 
+loader_mode_e last_mode;
 // friction_mode_e friction_text_mode = FRICTION_OFF;
 // shoot_mode_e shoot_text_mode       = SHOOT_OFF;
 // static int cnt                     = 100;
@@ -424,8 +421,8 @@ void ShootTask()
     // } else {
     //     friction_text_mode = FRICTION_ON;
     // }
-    diff1 = fabs(friction_l->measure.speed_rpm + friction_r->measure.speed_rpm);
-    diff2 = fabs(friction_l2->measure.speed_rpm + friction_r2->measure.speed_rpm);
+    // diff1 = fabs(friction_l->measure.speed_rpm + friction_r->measure.speed_rpm);
+    // diff2 = fabs(friction_l2->measure.speed_rpm + friction_r2->measure.speed_rpm);
     static float shoot_speed=0, shoot2_speed=0, limit_shoot_speed;
 
     // 从cmd获取控制数据
@@ -438,10 +435,10 @@ void ShootTask()
     if (shoot_cmd_recv.shoot_mode == SHOOT_OFF) {
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
         DJIMotorStop(friction_l);
-        DJIMotorStop(friction_r);
-        DJIMotorStop(friction_up);
-        DJIMotorStop(friction_l2);
-        DJIMotorStop(friction_r2);
+        // DJIMotorStop(friction_r);
+        // DJIMotorStop(friction_up);
+        // DJIMotorStop(friction_l2);
+        // DJIMotorStop(friction_r2);
         DJIMotorStop(friction_up2);
         // DJIMotorStop(limit);
 #endif
@@ -454,10 +451,10 @@ void ShootTask()
     {
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
         DJIMotorEnable(friction_l);
-        DJIMotorEnable(friction_r);
-        DJIMotorEnable(friction_up);
-        DJIMotorEnable(friction_l2);
-        DJIMotorEnable(friction_r2);
+        // DJIMotorEnable(friction_r);
+        // DJIMotorEnable(friction_up);
+        // DJIMotorEnable(friction_l2);
+        // DJIMotorEnable(friction_r2);
         DJIMotorEnable(friction_up2);
         // DJIMotorEnable(limit);
 // DJIMotorStop(friction_r);
@@ -466,6 +463,12 @@ void ShootTask()
         // DJIMotorEnable(loader);
         // DM_enable_flag = 1;
         DMMotorEnable1(loader);
+        if(loader->measure.state == 0)
+        {
+            loader->ctrl.pos_set = loader->measure.pos;
+            DMMotorEnableMode(loader);
+            CANTransmit(loader->motor_can_instance, 0.2);
+        }
 #endif
     }
     // 调试内容；模拟单发
@@ -493,8 +496,8 @@ void ShootTask()
         case LOAD_STOP:
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
             Laser_off();
-            DJIMotorSetRef(limit, -20000);
-            ramp_init(&limit_on_ramp, 300);
+            // DJIMotorSetRef(limit, -20000);
+            // ramp_init(&limit_on_ramp, 300);
             shoot_heat_count[0] = shoot_count; // shoot_cmd_recv.shoot_count;
 #endif
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
@@ -505,7 +508,8 @@ void ShootTask()
 #endif
             shoot_heat_count[1] = shoot_heat_count[0];
             one_bullet          = 0;
-
+            
+            last_mode = LOAD_STOP;
             break;
         // 激活能量机关
         case LOAD_1_BULLET:
@@ -530,7 +534,14 @@ void ShootTask()
             shoot_heat_count[1] = shoot_count; // shoot_cmd_recv.shoot_count;
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             shoot_heat_count[1] = shoot_cmd_recv.shoot_count;
-            // DM_enable_flag=1;
+
+            if(last_mode == LOAD_STOP)
+            {
+                current_angle = loader->measure.total_position;
+                loader->ctrl.vel_set = 50.0f;
+                loader->ctrl.pos_set = CalculateNextAngle(current_angle);
+            }
+            
 #endif
             if (shoot_heat_count[1] - shoot_heat_count[0] >= 1) {
                 one_bullet = 1;
@@ -544,7 +555,7 @@ void ShootTask()
                     limit_speed = (limit_shoot_speed + (0 - limit_shoot_speed) * ramp_calc(&limit_off_ramp));
                     ramp_init(&limit_on_ramp, 300);
                     // DJIMotorSetRef(limit, limit_speed);
-                    DJIMotorSetRef(limit, -20000);
+                    // DJIMotorSetRef(limit, -20000);
                     limit_shoot_speed = limit_speed;
 #endif
                     break;
@@ -568,13 +579,13 @@ void ShootTask()
 #endif
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
                     limit_speed = (limit_shoot_speed + (limit_speed_target - limit_shoot_speed) * ramp_calc(&limit_on_ramp));
-                    ramp_init(&limit_off_ramp, 300);
-                    DJIMotorSetRef(limit, limit_speed);
+                    // ramp_init(&limit_off_ramp, 300);
+                    // DJIMotorSetRef(limit, limit_speed);
                     limit_shoot_speed = limit_speed;
 #endif
                     break;
             }
-
+            last_mode = LOAD_1_BULLET;
             break;
         // 连发模式
         case LOAD_BURSTFIRE:
@@ -615,16 +626,14 @@ void ShootTask()
     }
 
     DJIMotorSetRef(friction_l, fric_speed);
-    DJIMotorSetRef(friction_r, fric_speed);
-    DJIMotorSetRef(friction_up, fric_speed);
-    DJIMotorSetRef(friction_l2, fric2_speed);
-    DJIMotorSetRef(friction_r2, fric2_speed);
+    // DJIMotorSetRef(friction_r, fric_speed);
+    // DJIMotorSetRef(friction_up, fric_speed);
+    // DJIMotorSetRef(friction_l2, fric2_speed);
+    // DJIMotorSetRef(friction_r2, fric2_speed);
     DJIMotorSetRef(friction_up2, fric2_speed);
     shoot_speed  = fric_speed;
     shoot2_speed = fric2_speed;
 #endif
-    loader->ctrl.kd_set = 2;
-    loader->ctrl.vel_set = 1;
     // 反馈数据
     memcpy(&shoot_feedback_data.shooter_local_heat, &local_heat, sizeof(float));
     memcpy(&shoot_feedback_data.shooter_heat_control, &heat_control, sizeof(int));
