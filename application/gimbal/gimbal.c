@@ -331,7 +331,8 @@ double nonlinear(const double x) {
 }
 
 float PitchNonlinear(float x) {
-    return (215.65 * x -3050.0);
+    //return (215.65 * x -3050.0);
+    return (187.0 * x -3604.0);
 }
 
 // ???????????
@@ -475,7 +476,14 @@ void GimbalTask()
             DJIMotorEnable(yaw_motor);
             DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP, OTHER_FEED);
             DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
-            DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw);
+            if (gimbal_cmd_recv.nuc_mode == version_control)
+            {
+                DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw_version);
+            }
+            else
+            {
+                DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw);
+            }
             break;
         case GIMBAL_MOTOR_MODE:
             DJIMotorEnable(yaw_motor);
@@ -502,7 +510,7 @@ void GimbalTask()
     #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     #ifndef pitch_motor->motor_controller.angle_PID.IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit;
     
-    pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
+    pitch_current_feedforward = 0;//PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
     switch (gimbal_cmd_recv.gimbal_mode) {
         // ??
         case GIMBAL_ZERO_FORCE:
@@ -532,51 +540,59 @@ void GimbalTask()
             // pitch_motor->motor_controller.speed_PID.Kd = pitch_PID.gyro_mode.speed_PID.Kd;
             // pitch_motor->motor_controller.speed_PID.IntegralLimit = pitch_PID.gyro_mode.speed_PID.IntegralLimit;
             // pitch_motor->motor_controller.speed_PID.MaxOut = pitch_PID.gyro_mode.speed_PID.MaxOut;
-            DJIMotorSetRef(pitch_motor,pitch_offset + gimbal_cmd_recv.pitch);
+            
+            if (gimbal_cmd_recv.nuc_mode == version_control)
+            {
+                DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch_version);
+            }
+            else
+            {
+                DJIMotorSetRef(pitch_motor,pitch_offset + gimbal_cmd_recv.pitch);
+            }
             // DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_test);
             // DJIMotorSetRef(telescope_motor,telescope_test);
            
-            switch(fpv_state)
-            {
-                case 0:
-                    fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
-                    telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
-                    DJIMotorSetRef(fpv_pitch_motor,10000);
-                    DJIMotorSetRef(telescope_motor,10000);
-                    fpv_count++;
-                    if(fpv_count>=2000)
-                    {
-                        fpv_pitch_up = fpv_pitch_motor->measure.total_angle-50;
-                        telescope_up = telescope_motor->measure.total_angle-50;
-                        fpv_state = 1;
-                        fpv_count = 0;
-                    }
-                break;
-                case 1:
-                    fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
-                    telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
-                    DJIMotorSetRef(fpv_pitch_motor,-10000);
-                    DJIMotorSetRef(telescope_motor,-10000);
-                    fpv_count++;
-                    if(fpv_count>=1000)
-                    {
-                        fpv_pitch_down = fpv_pitch_motor->measure.total_angle+50;
-                        telescope_down = telescope_motor->measure.total_angle+50;
-                        fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 5000;
-                        telescope_motor->motor_controller.speed_PID.MaxOut = 5000;
-                        fpv_state = 2;
-                        fpv_count = 0;
-                    }
-                break;
-                case 2:
-                    if(telescope_pos) DJIMotorSetRef(telescope_motor,telescope_down);
-                    else DJIMotorSetRef(telescope_motor,telescope_up);
-                    if(fpv_pos) DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_down);
-                    else DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_up);
-                break;
-                default:
-                break;
-            }
+            // switch(fpv_state)
+            // {
+            //     case 0:
+            //         fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
+            //         telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
+            //         DJIMotorSetRef(fpv_pitch_motor,10000);
+            //         DJIMotorSetRef(telescope_motor,10000);
+            //         fpv_count++;
+            //         if(fpv_count>=2000)
+            //         {
+            //             fpv_pitch_up = fpv_pitch_motor->measure.total_angle-50;
+            //             telescope_up = telescope_motor->measure.total_angle-50;
+            //             fpv_state = 1;
+            //             fpv_count = 0;
+            //         }
+            //     break;
+            //     case 1:
+            //         fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
+            //         telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
+            //         DJIMotorSetRef(fpv_pitch_motor,-10000);
+            //         DJIMotorSetRef(telescope_motor,-10000);
+            //         fpv_count++;
+            //         if(fpv_count>=1000)
+            //         {
+            //             fpv_pitch_down = fpv_pitch_motor->measure.total_angle+50;
+            //             telescope_down = telescope_motor->measure.total_angle+50;
+            //             fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 5000;
+            //             telescope_motor->motor_controller.speed_PID.MaxOut = 5000;
+            //             fpv_state = 2;
+            //             fpv_count = 0;
+            //         }
+            //     break;
+            //     case 2:
+            //         if(telescope_pos) DJIMotorSetRef(telescope_motor,telescope_down);
+            //         else DJIMotorSetRef(telescope_motor,telescope_up);
+            //         if(fpv_pos) DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_down);
+            //         else DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_up);
+            //     break;
+            //     default:
+            //     break;
+            // }
             break;
         case GIMBAL_MOTOR_MODE:
             DJIMotorEnable(pitch_motor);
@@ -595,52 +611,51 @@ void GimbalTask()
             // pitch_motor->motor_controller.speed_PID.MaxOut = pitch_PID.motor_mode.speed_PID.MaxOut;
             DJIMotorSetRef(pitch_motor, pitch_offset + gimbal_cmd_recv.pitch); 
             // DJIMotorSetRef(pitch_motor, pitch_test); 
-            switch(fpv_state)
-            {
-                case 0:
-                    fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
-                    telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
-                    DJIMotorSetRef(fpv_pitch_motor,10000);
-                    DJIMotorSetRef(telescope_motor,10000);
-                    fpv_count++;
-                    if(fpv_count>=2000)
-                    {
-                        fpv_pitch_up = fpv_pitch_motor->measure.total_angle-50;
-                        telescope_up = telescope_motor->measure.total_angle-50;
-                        fpv_state = 1;
-                        fpv_count = 0;
-                    }
-                break;
-                case 1:
-                    fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
-                    telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
-                    DJIMotorSetRef(fpv_pitch_motor,-10000);
-                    DJIMotorSetRef(telescope_motor,-10000);
-                    fpv_count++;
-                    if(fpv_count>=1000)
-                    {
-                        fpv_pitch_down = fpv_pitch_motor->measure.total_angle+50;
-                        telescope_down = telescope_motor->measure.total_angle+50;
-                        fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 5000;
-                        telescope_motor->motor_controller.speed_PID.MaxOut = 5000;
-                        fpv_state = 2;
-                        fpv_count = 0;
-                    }
-                break;
-                case 2:
-                    if(telescope_pos) DJIMotorSetRef(telescope_motor,telescope_down);
-                    else DJIMotorSetRef(telescope_motor,telescope_up);
-                    if(fpv_pos) DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_down);
-                    else DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_up);
-                break;
-                default:
-                break;
-            }
+            // switch(fpv_state)
+            // {
+            //     case 0:
+            //         fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
+            //         telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
+            //         DJIMotorSetRef(fpv_pitch_motor,10000);
+            //         DJIMotorSetRef(telescope_motor,10000);
+            //         fpv_count++;
+            //         if(fpv_count>=2000)
+            //         {
+            //             fpv_pitch_up = fpv_pitch_motor->measure.total_angle-50;
+            //             telescope_up = telescope_motor->measure.total_angle-50;
+            //             fpv_state = 1;
+            //             fpv_count = 0;
+            //         }
+            //     break;
+            //     case 1:
+            //         fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 1500;
+            //         telescope_motor->motor_controller.speed_PID.MaxOut = 1000;
+            //         DJIMotorSetRef(fpv_pitch_motor,-10000);
+            //         DJIMotorSetRef(telescope_motor,-10000);
+            //         fpv_count++;
+            //         if(fpv_count>=1000)
+            //         {
+            //             fpv_pitch_down = fpv_pitch_motor->measure.total_angle+50;
+            //             telescope_down = telescope_motor->measure.total_angle+50;
+            //             fpv_pitch_motor->motor_controller.speed_PID.MaxOut = 5000;
+            //             telescope_motor->motor_controller.speed_PID.MaxOut = 5000;
+            //             fpv_state = 2;
+            //             fpv_count = 0;
+            //         }
+            //     break;
+            //     case 2:
+            //         if(telescope_pos) DJIMotorSetRef(telescope_motor,telescope_down);
+            //         else DJIMotorSetRef(telescope_motor,telescope_up);
+            //         if(fpv_pos) DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_down);
+            //         else DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_up);
+            //     break;
+            //     default:
+            //     break;
+            // }
         break;
         default:
             break;
     }
-    
     #endif // !BIG_HEAD
     #ifdef BIG_HEAD
     pitch_current_feedforward=-exp((352-gimbal_IMU_data->output.INS_angle_deg[0])/40);

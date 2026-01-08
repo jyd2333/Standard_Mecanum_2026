@@ -106,7 +106,7 @@ float friction_feedforwardl = 83, friction_feedforwardr = -67, friction_feedforw
 
 DMMotorInstance *loader;
 
-static const float loader_offset_angle = 16.8;
+static const float loader_offset_angle = 16.4;
 static float current_angle;
 
 void ShootInit()
@@ -119,12 +119,12 @@ void ShootInit()
         },
         .controller_param_init_config = {
             .speed_PID = {
-                .Kp            = 1.2,
+                .Kp            = 1.4,
                 .Ki            = 0,
                 .Kd            = 0,
                 .Improve       = PID_Integral_Limit,
                 .IntegralLimit = 15000,
-                .MaxOut        = 15000,
+                .MaxOut        = 16380,
             },
 
         },
@@ -427,6 +427,7 @@ void ShootTask()
 
     // 从cmd获取控制数据
     SubGetMessage(shoot_sub, &shoot_cmd_recv);
+
     // shoot_cmd_recv.friction_mode = friction_text_mode;
     // shoot_cmd_recv.shoot_mode    = shoot_text_mode;
     // loadmode                     = shoot_cmd_recv.load_mode;
@@ -620,8 +621,8 @@ void ShootTask()
     } else if (shoot_cmd_recv.friction_mode == FRICTION_OFF) {
         fric_speed  = (shoot_speed + (0 - shoot_speed) * ramp_calc(&fric_off_ramp));
         fric2_speed = (shoot2_speed + (0 - shoot2_speed) * ramp_calc(&fric2_off_ramp));
-        ramp_init(&fric_on_ramp, 300);
-        ramp_init(&fric2_on_ramp, 300);
+        ramp_init(&fric_on_ramp, 2000);
+        ramp_init(&fric2_on_ramp, 2000);
         Laser_off();
     }
 

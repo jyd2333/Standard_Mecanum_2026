@@ -15,7 +15,7 @@
 #include "ins_task.h"
 #include "master_process.h"
 #include "stdint.h"
-#define NUC_RECV_SIZE 7
+#define NUC_RECV_SIZE 32
 #define Chassis_Ctrl_Cmd_s_uart_size sizeof(Chassis_Ctrl_Cmd_s_uart)
 #define Chassis_Upload_Data_s_uart_size sizeof(Chassis_Upload_Data_s_uart)
 /* 开发板类型定义,烧录时注意不要弄错对应功能;修改定义后需要重新编译,只能存在一个定义! */
