@@ -189,17 +189,17 @@ void GimbalInit()
         },
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp            = 2.1 ,//0.16,//13, // 35, // 40, // 10
-                .Ki            = 0,//0.5,
-                .Kd            = 0,//0.1,
+                .Kp            = 1.5 ,//0.16,//13, // 35, // 40, // 10
+                .Ki            = 0.02,//0.5,
+                .Kd            = 0.0,//0.1,
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit  | PID_Derivative_On_Measurement,
-                .IntegralLimit = 0,//5,//10,
-                .MaxOut        = 5,
+                .IntegralLimit = 2,//10,
+                .MaxOut        = 8,
                 
             },
             .speed_PID = {
-                .Kp            = 18000,//7500,//100,//6000, // 10500, // 13000,//10500,  // 10500
-                .Ki            = 2000,//1000,//2000, // 10000, // 10000
+                .Kp            = 16000,//7500,//100,//6000, // 10500, // 13000,//10500,  // 10500
+                .Ki            = 1800,//1000,//2000, // 10000, // 10000
                 .Kd            = 0,//5,    // 0
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement ,//| PID_ChangingIntegrationRate |PID_OutputFilter,
                 .IntegralLimit = 3000,
@@ -332,7 +332,7 @@ double nonlinear(const double x) {
 
 float PitchNonlinear(float x) {
     //return (215.65 * x -3050.0);
-    return (187.0 * x -3604.0);
+    return (186.0 * x - 1292.0);
 }
 
 // ???????????
@@ -510,7 +510,7 @@ void GimbalTask()
     #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     #ifndef pitch_motor->motor_controller.angle_PID.IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit;
     
-    pitch_current_feedforward = 0;//PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
+    pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
     switch (gimbal_cmd_recv.gimbal_mode) {
         // ??
         case GIMBAL_ZERO_FORCE:
@@ -655,7 +655,7 @@ void GimbalTask()
         break;
         default:
             break;
-    }
+    } 
     #endif // !BIG_HEAD
     #ifdef BIG_HEAD
     pitch_current_feedforward=-exp((352-gimbal_IMU_data->output.INS_angle_deg[0])/40);

@@ -256,7 +256,12 @@ void DMMotorEnableMode(DMMotorInstance *motor)//
         memcpy(motor->motor_can_instance->tx_buff, &data, sizeof(data));
 }
 
-
+void DMMotorClearError(DMMotorInstance *motor)
+{
+    uint8_t data[8] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfb};
+    memset(motor->motor_can_instance->tx_buff, 0, sizeof(motor->motor_can_instance->tx_buff));
+    memcpy(motor->motor_can_instance->tx_buff, &data, sizeof(data));
+}
 
 void mit_ctrl(DMMotorInstance *motor)//
 {
@@ -292,7 +297,19 @@ uint8_t DMMotorIsOnline(DMMotorInstance *motor)
 // 异常检测
 void DMMotorErrorDetection(DMMotorInstance *motor)
 {
-    
+    if (motor->measure.state != 1)
+    {
+        DMMotorEnableMode(motor);
+        for (int i = 0; i < 100; i++)
+        {
+            CANTransmit(motor->motor_can_instance, 1);
+        }
+        DMMotorClearError(motor);
+        for (int i = 0; i < 100; i++)
+        {
+            CANTransmit(motor->motor_can_instance, 1);
+        }
+    }
  }   
 
 //DM电机软重启

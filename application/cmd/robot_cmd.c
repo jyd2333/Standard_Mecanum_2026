@@ -841,14 +841,12 @@ static void RemoteControlSet()
     if(gimbal_cmd_send.nuc_mode == version_control)
     {
         shoot_cmd_send.friction_mode = FRICTION_ON;
-        if (fire_advice == 1)
-            {
-                shoot_cmd_send.load_mode = LOAD_1_BULLET;
-            }
-            else
-            {
-                shoot_cmd_send.load_mode = LOAD_STOP;
-            }
+        if (fire_advice == 0)
+        {
+            shoot_cmd_send.load_mode = LOAD_STOP;
+        }
+        pitch_control = gimbal_cmd_send.pitch_version;
+        yaw_control = gimbal_cmd_send.yaw_version; 
     }
 //    HeatControl();
     pitch_control += /*0.1**/RAD_TO_ANGLE*PITCH_K* (float)rc_data[TEMP].rc.rocker_l1 ;
@@ -1240,8 +1238,12 @@ void USB_Version_devode(){
     fire_advice = fifo_pack[1];
     fp_pitch = uint8_to_float_manual(fifo_pack + 4);
     fp_yaw = uint8_to_float_manual(fifo_pack + 8);
-    gimbal_cmd_send.pitch_version=fp_pitch;
-    gimbal_cmd_send.yaw_version=fp_yaw;
+    if (fp_yaw != 0.0f)
+    {
+        gimbal_cmd_send.pitch_version = fp_pitch;
+        gimbal_cmd_send.yaw_version = fp_yaw;
+    }
+    
     // if(ifTrueVision(fp_pitch,0)){
     //     if(fabs(fp_pitch)<10){
     //     gimbal_cmd_send.pitch_version=fp_pitch;
@@ -1404,7 +1406,7 @@ DeterminRobotID();
         chassis_cmd_send.power_limit=refree_power_choice(referee_data->GameRobotState.robot_level);
         //chassis_cmd_send.power_limit=100;//referee_data->GameRobotState.chassis_power_limit-10;
     }
-    else chassis_cmd_send.power_limit=100;//refree_power_choice(referee_data->GameRobotState.robot_level);
+    else chassis_cmd_send.power_limit=500;//100;//refree_power_choice(referee_data->GameRobotState.robot_level);
     g_power_set=chassis_cmd_send.power_limit;
     // chassis_cmd_send.power_limit=20;
     chassis_cmd_send.level=referee_data->GameRobotState.robot_level;

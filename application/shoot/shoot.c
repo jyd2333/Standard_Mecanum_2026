@@ -102,11 +102,11 @@ void Button_Debounce(void)
             break;
     }
 }
-float friction_feedforwardl = 83, friction_feedforwardr = -67, friction_feedforwardl2 = 75, friction_feedforwardr2 = -40;
+float friction_feedforwardl = 100, friction_feedforwardr2 = -100;
 
 DMMotorInstance *loader;
 
-static const float loader_offset_angle = 16.4;
+static float loader_offset_angle = 25;
 static float current_angle;
 
 void ShootInit()
@@ -119,12 +119,12 @@ void ShootInit()
         },
         .controller_param_init_config = {
             .speed_PID = {
-                .Kp            = 1.4,
+                .Kp            = 0.8,
                 .Ki            = 0,
                 .Kd            = 0,
                 .Improve       = PID_Integral_Limit,
                 .IntegralLimit = 15000,
-                .MaxOut        = 16380,
+                .MaxOut        = 10000,
             },
 
         },
@@ -135,16 +135,18 @@ void ShootInit()
             .outer_loop_type    = SPEED_LOOP,
             .close_loop_type    = SPEED_LOOP,
             .motor_reverse_flag = MOTOR_DIRECTION_REVERSE,
-            //.feedforward_flag   = CURRENT_FEEDFORWARD,
+            .feedforward_flag   = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508};
 
     friction_config.can_init_config.tx_id                                = 2; // 左摩擦轮,改txid和方向就行
     friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_REVERSE;
+    friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardr2;
     friction_l                                                           = DJIMotorInit(&friction_config);
     // 三摩擦轮外加电机
     friction_config.can_init_config.tx_id                             = 1;
     friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
+    friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardl;
     friction_up2                                                      = DJIMotorInit(&friction_config);
     DJIMotorStop(friction_l);
     DJIMotorStop(friction_up2);
@@ -539,7 +541,7 @@ void ShootTask()
             if(last_mode == LOAD_STOP)
             {
                 current_angle = loader->measure.total_position;
-                loader->ctrl.vel_set = 50.0f;
+                loader->ctrl.vel_set = 25.0f;
                 loader->ctrl.pos_set = CalculateNextAngle(current_angle);
             }
             
@@ -615,14 +617,14 @@ void ShootTask()
         // 根据收到的弹速设置设定摩擦轮电机参考值,需实测后填入
         fric_speed  = (shoot_speed + (shoot_speed_target - shoot_speed) * ramp_calc(&fric_on_ramp));
         fric2_speed = (shoot2_speed + (shoot2_speed_target - shoot2_speed) * ramp_calc(&fric2_on_ramp));
-        ramp_init(&fric_off_ramp, 300);
-        ramp_init(&fric2_off_ramp, 300);
+        ramp_init(&fric_off_ramp, 3000);
+        ramp_init(&fric2_off_ramp, 3000);
         Laser_on();
     } else if (shoot_cmd_recv.friction_mode == FRICTION_OFF) {
         fric_speed  = (shoot_speed + (0 - shoot_speed) * ramp_calc(&fric_off_ramp));
         fric2_speed = (shoot2_speed + (0 - shoot2_speed) * ramp_calc(&fric2_off_ramp));
-        ramp_init(&fric_on_ramp, 2000);
-        ramp_init(&fric2_on_ramp, 2000);
+        ramp_init(&fric_on_ramp, 8000);
+        ramp_init(&fric2_on_ramp, 8000);
         Laser_off();
     }
 
