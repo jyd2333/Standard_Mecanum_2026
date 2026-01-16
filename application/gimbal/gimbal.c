@@ -478,6 +478,15 @@ void GimbalTask()
             DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
             if (gimbal_cmd_recv.nuc_mode == version_control)
             {
+                float error = gimbal_cmd_recv.yaw_version - *yaw_motor->motor_controller.other_angle_feedback_ptr;
+                if (error > 180.0f)
+                {
+                    gimbal_cmd_recv.yaw_version = *yaw_motor->motor_controller.other_angle_feedback_ptr - 360.0 + error;
+                }
+                else if (error < -180.0)
+                {
+                    gimbal_cmd_recv.yaw_version = *yaw_motor->motor_controller.other_angle_feedback_ptr + (360 + error);
+                }
                 DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw_version);
             }
             else
