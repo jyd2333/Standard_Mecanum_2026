@@ -101,6 +101,7 @@ float fire_advice;
 // #define Chassis_Ctrl_Cmd_s_uart_size sizeof(Chassis_Ctrl_Cmd_s_uart)
 // #define Chassis_Upload_Data_s_uart_size sizeof(Chassis_Upload_Data_s_uart)
 uint8_t SuperCap_flag_from_user = 0; // 超电标志位
+uint8_t rc_update_flag = 0;//遥控器数据更新标志位（防止同一个周期多次触发）
 // float imu_angle[3];
 // float imu_gyro[3];
 static PIDInstance PITCH_version_PID = {
@@ -716,138 +717,84 @@ static void RemoteControlSet()
     gimbal_cmd_send.gimbal_mode = GIMBAL_GYRO_MODE;
     shoot_cmd_send.shoot_rate   = 30; // 射频默认30Hz
 
+
+    //滚轮下拨一下切换自瞄或关闭自瞄
+
+    if (rc_update_flag == 1)
+    {
+        if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
+        {
+            if (gimbal_cmd_send.nuc_mode != version_control)
+                gimbal_cmd_send.nuc_mode = version_control;
+            else
+                gimbal_cmd_send.nuc_mode = none_version_control;
+        }
+
+        switch (rc_data[TEMP].rc.switch_left)
+        {
+            case RC_SW_UP:
+
+                if (rc_data[LAST].rc.switch_left == RC_SW_MID)//左中到上开关摩擦轮
+                {
+                    if (shoot_cmd_send.friction_mode == FRICTION_ON)
+                        shoot_cmd_send.friction_mode = FRICTION_OFF;
+                    else
+                        shoot_cmd_send.friction_mode = FRICTION_ON;
+                }
+                break;
+
+            case RC_SW_DOWN:
+
+                if (gimbal_cmd_send.nuc_mode == none_version_control)
+                {
+                    if (rc_data[LAST].rc.switch_left == RC_SW_MID && shoot_cmd_send.friction_mode == FRICTION_ON)//左中到下且开摩擦轮时打弹
+                    {
+                        shoot_cmd_send.load_mode = LOAD_1_BULLET;
+                    }
+                }
+                else
+                {
+                    if (fire_advice == 1)
+                    {
+                        shoot_cmd_send.load_mode = LOAD_1_BULLET;
+                    }
+                }
+                
+                break;
+            case RC_SW_MID:
+                if (rc_data[LAST].rc.switch_left == RC_SW_DOWN)
+                {
+                    shoot_cmd_send.load_mode = LOAD_STOP;
+                }
+                break;
+        }
+
+        switch (rc_data[TEMP].rc.switch_right)
+        {
+            case RC_SW_UP:
+                if (rc_data[LAST].rc.switch_right == RC_SW_MID)
+                {
+                    if (chassis_cmd_send.chassis_mode != CHASSIS_FOLLOW_GIMBAL_YAW)
+                        chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
+                    else
+                        chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
+                }
+                break;
+            case RC_SW_DOWN:
+                if (rc_data[LAST].rc.switch_right == RC_SW_MID)
+                {
+                    if (chassis_cmd_send.chassis_mode != CHASSIS_ROTATE)
+                        chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
+                    else
+                        chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
+                }
+                break;
+        }
+        
+        rc_update_flag = 0;
+    }
     
 
-    // 使用相对角度控制
-    // memcpy(&rec_yaw, vision_recv_data, sizeof(float));
-    // memcpy(&rec_pitch, vision_recv_data + 4, sizeof(float));
-
-    switch (rc_data[TEMP].rc.switch_right) {
-        case RC_SW_MID:
-            if (rc_mode[CHASSIS_FREE] == 1) {
-                chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
-            }
-            
-            if (rc_data[TEMP].rc.switch_left == RC_SW_MID && chassis_cmd_send.chassis_mode == CHASSIS_NO_FOLLOW) {
-                rc_mode[CHASSIS_ROTATION] = 1;
-                rc_mode[CHASSIS_FOLLOW]   = 1;
-            }
-
-            if (chassis_cmd_send.chassis_mode == CHASSIS_ROTATE) {
-                rc_mode[CHASSIS_ROTATION] = 0;
-            }
-
-            if (chassis_cmd_send.chassis_mode == CHASSIS_FOLLOW_GIMBAL_YAW) {
-                rc_mode[CHASSIS_FOLLOW] = 0;
-            }
-            break;
-        case RC_SW_DOWN:
-            rc_mode[CHASSIS_FREE] = 0;
-            if (rc_mode[CHASSIS_ROTATE] == 1) {
-                if (rc_data[TEMP].rc.dial < -400) {
-                    chassis_cmd_send.chassis_mode = CHASSIS_REVERSE_ROTATE;
-                } else {
-                    chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
-                }
-            } else {
-                chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
-            }
-            break;
-        case RC_SW_UP:
-            rc_mode[CHASSIS_FREE] = 0;
-            if (rc_mode[CHASSIS_FOLLOW] == 1) {
-                chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
-            } else {
-                chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
-            }
-            break;
-        default:
-            break;
-    }
-    switch (rc_data[TEMP].rc.switch_left) {
-        case RC_SW_MID:
-            Trig_Time = 0;
-            if (rc_data[TEMP].rc.switch_right == RC_SW_MID) {
-                // 摩擦轮
-                if (rc_mode[SHOOT_FRICTION] == 0 && shoot_cmd_send.friction_mode == FRICTION_OFF) {
-                    rc_mode[SHOOT_FRICTION] = 1;
-                }
-            }
-            if (shoot_cmd_send.friction_mode == FRICTION_ON) {
-                rc_mode[SHOOT_FRICTION] = 0;
-            }
-            Switch_Left_Last=RC_SW_MID;
-            shoot_cmd_send.shoot_aim_angle = shoot_fetch_data.loader_angle - ONE_BULLET_DELTA_ANGLE;
-            shoot_cmd_send.Shoot_Once_Flag = 1;
-            shoot_cmd_send.load_mode=LOAD_STOP;
-            break;
-        case RC_SW_UP:
-            Trig_Time = 0;
-            if (rc_mode[SHOOT_FRICTION] == 1) {
-                shoot_cmd_send.friction_mode = FRICTION_ON;
-            } else {
-                shoot_cmd_send.friction_mode = FRICTION_OFF;
-            }
-            Switch_Left_Last=RC_SW_UP;
-            break;
-        case RC_SW_DOWN:
-
-            if (rc_data[TEMP].rc.dial < -250) {
-                shoot_cmd_send.load_mode=LOAD_REVERSE;
-                // shoot_cmd_send.Shoot_Once_Flag = 0;
-                // shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
-            } else {
-                shoot_cmd_send.load_mode = LOAD_1_BULLET;
-                }
-            Switch_Left_Last=RC_SW_DOWN;
-        default:
-            break;
-    }
-
-    if (rc_data[TEMP].rc.dial > 250) {
-        SuperCap_flag_from_user = SUPER_USER_OPEN;
-        if (rc_mode[VISION_MODE] == 1)
-        {
-            gimbal_cmd_send.nuc_mode=version_control;
-            
-        }
-        else
-        {
-            gimbal_cmd_send.nuc_mode = none_version_control;
-        }
-        // if(fabs(gimbal_cmd_send.pitch_version)<16)pitch_control-=PIDCalculate(&PITCH_version_PID,gimbal_cmd_send.pitch_version,0);
-        // if(fabs(gimbal_cmd_send.yaw_version)<20)yaw_control-=PIDCalculate(&YAW_version_PID,gimbal_cmd_send.yaw_version,0);
-        // pitch_control=gimbal_fetch_data.gimbal_imu_data->output.INS_angle_deg[0]+gimbal_cmd_send.pitch_version;
-        // pitch_control=pitch_shoot_angle;
-        //pitch_control-=PIDCalculate(&PITCH_version_PID,gimbal_cmd_send.pitch_version,0);
-        // yaw_control-=PIDCalculate(&YAW_version_PID,gimbal_cmd_send.yaw_version,0);
-        //yaw_control=imu_angle[2]+gimbal_cmd_send.yaw_version;
-        // gimbal_cmd_send.yaw_version=0;
-        //gimbal_cmd_send.pitch_version=low_pass_filiter(gimbal_cmd_send.pitch_version);
-
-    } 
-    else {
-        if (gimbal_cmd_send.nuc_mode == version_control)
-        {
-            rc_mode[VISION_MODE] = 0;
-        }
-        else
-        {
-            rc_mode[VISION_MODE] = 1;
-        }
-        SuperCap_flag_from_user = SUPER_USER_CLOSE; // 默认关闭超电b 
-        
-    }
-    if(gimbal_cmd_send.nuc_mode == version_control)
-    {
-        shoot_cmd_send.friction_mode = FRICTION_ON;
-        if (fire_advice == 0)
-        {
-            shoot_cmd_send.load_mode = LOAD_STOP;
-        }
-        pitch_control = gimbal_cmd_send.pitch_version;
-        yaw_control = gimbal_cmd_send.yaw_version; 
-    }
 //    HeatControl();
     pitch_control += /*0.1**/RAD_TO_ANGLE*PITCH_K* (float)rc_data[TEMP].rc.rocker_l1 ;
     yaw_control -= /*0.05**/YAW_K * (float)rc_data[TEMP].rc.rocker_l_ ;
@@ -1036,7 +983,23 @@ static void ShootSet()
     // 仅在摩擦轮开启时有效
     if (shoot_cmd_send.friction_mode == FRICTION_ON) {
         // 打弹，单击左键单发，长按连发
-        if (rc_data[TEMP].mouse.press_l) {shoot_cmd_send.load_mode = LOAD_1_BULLET;
+        if (rc_data[TEMP].mouse.press_l) 
+        {
+            if (gimbal_cmd_send.nuc_mode == none_version_control)
+            {
+                shoot_cmd_send.load_mode = LOAD_1_BULLET;
+            }
+            else
+            {
+                if (fire_advice == 1)
+                {
+                    shoot_cmd_send.load_mode = LOAD_1_BULLET;
+                }
+                else
+                {
+                    shoot_cmd_send.load_mode = LOAD_STOP;
+                }
+            }
             // 打符，单发
             // if (auto_rune == 1) {
             //     shoot_cmd_send.load_mode = LOAD_1_BULLET;
@@ -1052,10 +1015,13 @@ static void ShootSet()
     if (rc_data[TEMP].key[KEY_PRESS].g){
         shoot_cmd_send.load_mode = LOAD_REVERSE;
     }
-    if(rc_data[TEMP].mouse.press_r&&!mouse_r_last)
+    if(rc_data[TEMP].mouse.press_r)
     {
-        if(telescope_pos) telescope_pos = 0;
-        else telescope_pos = 1;
+        gimbal_cmd_send.nuc_mode = version_control;
+    }
+    else
+    {
+        gimbal_cmd_send.nuc_mode = none_version_control;
     }
     mouse_r_last = rc_data[TEMP].mouse.press_r;
     HeatControl();

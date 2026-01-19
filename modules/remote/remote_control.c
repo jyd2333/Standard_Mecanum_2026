@@ -16,6 +16,8 @@ static uint8_t rc_init_flag = 0; // 遥控器初始化标志位
 static USARTInstance *rc_usart_instance;
 static DaemonInstance *rc_daemon_instance;
 
+extern uint8_t rc_update_flag;
+
 /**
  * @brief 矫正遥控器摇杆的值,超过660或者小于-660的值都认为是无效值,置0
  *
@@ -34,6 +36,7 @@ static void RectifyRCjoystick()
  */
 static void sbus_to_rc(const uint8_t *sbus_buf)
 {
+    memcpy(&rc_ctrl[LAST], &rc_ctrl[TEMP], sizeof(RC_ctrl_t)); // 保存上一次的数据,用于按键持续按下和切换的判断
     static int16_t rc_dial_last = 0, rc_dial_cnt = 0, rc_dial_temp = 0;
     // 摇杆,直接解算时减去偏置
     rc_ctrl[TEMP].rc.rocker_r_ = ((sbus_buf[0] | (sbus_buf[1] << 8)) & 0x07ff) - RC_CH_VALUE_OFFSET;                              //!< Channel 0
@@ -87,7 +90,7 @@ static void sbus_to_rc(const uint8_t *sbus_buf)
             rc_ctrl[TEMP].key_count[KEY_PRESS_WITH_SHIFT][i]++;
     }
 
-    memcpy(&rc_ctrl[LAST], &rc_ctrl[TEMP], sizeof(RC_ctrl_t)); // 保存上一次的数据,用于按键持续按下和切换的判断
+    rc_update_flag = 1;
 }
 
 /**

@@ -538,7 +538,7 @@ void ShootTask()
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             shoot_heat_count[1] = shoot_cmd_recv.shoot_count;
 
-            if(last_mode == LOAD_STOP)
+            if(last_mode == LOAD_STOP && shoot_cmd_recv.shooter_referee_heat > 100)
             {
                 current_angle = loader->measure.total_position;
                 loader->ctrl.vel_set = 25.0f;

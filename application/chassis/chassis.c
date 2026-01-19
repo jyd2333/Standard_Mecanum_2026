@@ -426,7 +426,6 @@ void ChassisTask()
 #ifdef CHASSIS_BOARD
     SubGetMessage(chassis_sub, &chassis_cmd_recv);
     // chassis_cmd_recv_half_float = *(Chassis_Ctrl_Cmd_s_half_float *)CANCommGet(chasiss_can_comm);
-    chassis_cmd_recv.power_limit=100;  //预设功率
     // chassis_cmd_recv.power_limit=1000;
     // chassis_cmd_recv.chassis_power=1000;
     // chassis_cmd_recv.power_buffer=1000;
