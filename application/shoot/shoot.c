@@ -179,38 +179,39 @@ void ShootInit()
 #endif
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
     // 拨盘电机
-    // Motor_Init_Config_s loader_config = {
-    //     .can_init_config = {
-    //         .can_handle = &hcan2,
-    //         .tx_id      = 1,
-    //         .rx_id      =1,
-    //     },
-    //     .controller_param_init_config = {
-    //         .angle_PID = {
-    //             // 如果启用位置环来控制发弹,需要较大的I值保证输出力矩的线性度否则出现接近拨出的力矩大幅下降
-    //             .Kp     = 50, // 11
-    //             .Ki     = 0,
-    //             .Kd     = 0,
-    //             .MaxOut = 16000, // 200,
-    //         },
-    //         .speed_PID = {
-    //             .Kp            = 2, // 10
-    //             .Ki            = 1, // 1
-    //             .Kd            = 0,
-    //             .Improve       = PID_Integral_Limit,
-    //             .IntegralLimit = 5000,
-    //             .MaxOut        = 16000,
-    //         },
+    Motor_Init_Config_s loader_config = {
+        .can_init_config = {
+            .can_handle = &hcan2,
+            .tx_id      = 1,
+            .rx_id      =1,
+        },
+        .controller_param_init_config = {
+            // .angle_PID = {
+            //     // 如果启用位置环来控制发弹,需要较大的I值保证输出力矩的线性度否则出现接近拨出的力矩大幅下降
+            //     .Kp     = 50, // 11
+            //     .Ki     = 0,
+            //     .Kd     = 0,
+            //     .MaxOut = 16000, // 200,
+            // },
+            .speed_PID = {
+                .Kp            = 2, // 10
+                .Ki            = 1, // 1
+                .Kd            = 0,
+                .Improve       = PID_Integral_Limit,
+                .IntegralLimit = 5000,
+                .MaxOut        = 16000,
+            },
 
-    //     },
-    //     .controller_setting_init_config = {
-    //         .angle_feedback_source = MOTOR_FEED, .speed_feedback_source = MOTOR_FEED,
-    //         .outer_loop_type    = SPEED_LOOP,              // 初始化成SPEED_LOOP,让拨盘停在原地,防止拨盘上电时乱转
-    //         .close_loop_type    = SPEED_LOOP | ANGLE_LOOP, // SPEED_LOOP,
-    //         .motor_reverse_flag = MOTOR_DIRECTION_NORMAL,  // 注意方向设置为拨盘的拨出的击发方向
-    //     },
-    //     .motor_type = M3508 // 英雄使用m3508
-    // };
+        },
+        .controller_setting_init_config = {
+            .angle_feedback_source = MOTOR_FEED, 
+            .speed_feedback_source = MOTOR_FEED,
+            .outer_loop_type    = SPEED_LOOP,              // 初始化成SPEED_LOOP,让拨盘停在原地,防止拨盘上电时乱转
+            .close_loop_type    = SPEED_LOOP, // SPEED_LOOP,
+            .motor_reverse_flag = MOTOR_DIRECTION_NORMAL,  // 注意方向设置为拨盘的拨出的击发方向
+        },
+        .motor_type = M2006 // 英雄使用m3508
+    };
 
 
 
@@ -248,28 +249,10 @@ void ShootInit()
     //     .motor_type = DM // 新增了达妙电机
     // };
 
-    // loader = DJIMotorInit(&loader_config);
+    loader = DJIMotorInit(&loader_config);
 
-    // DJIMotorStop(loader);
+    DJIMotorStop(loader);
 
-    Motor_Init_Config_s loader_motor_config = {
-        .can_init_config = {
-            .can_handle = &hcan2,
-            .tx_id = 0x101,
-            .rx_id = 0x11,
-        },
-        .motor_type = DM_4310,
-        .controller_setting_init_config = {
-            .control_range = {
-                .P_max = 12.5,
-                .V_max = 30,
-                .T_max = 10,
-            },
-        },
-        .motor_contro_type = ANGLE_LOOP_CONTRO,
-    };
-    loader = DMMotorInit(&loader_motor_config);
-    DMMotorStop(loader);
 
 #endif
     shoot_cmd_recv.shoot_mode = SHOOT_ON; // 初始化后摩擦轮进入准备模式,也可将右拨杆拨至上一次来手动开启
@@ -536,14 +519,18 @@ void ShootTask()
             // 速度环发射
             shoot_heat_count[1] = shoot_count; // shoot_cmd_recv.shoot_count;
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
-            shoot_heat_count[1] = shoot_cmd_recv.shoot_count;
-
-            if(last_mode == LOAD_STOP && shoot_cmd_recv.shooter_referee_heat > 100)
-            {
-                current_angle = loader->measure.total_position;
-                loader->ctrl.vel_set = 25.0f;
-                loader->ctrl.pos_set = CalculateNextAngle(current_angle);
+            if (shoot_heat_count[1] - shoot_heat_count[0] >= 1) {
+                one_bullet = 1;
             }
+            switch (one_bullet) {
+                case 1:
+                    DJIMotorSetRef(loader, 0);
+                    break;
+                case 0:
+                    DJIMotorSetRef(loader, 5000);
+                    break;
+            }
+            break;
             
 #endif
             if (shoot_heat_count[1] - shoot_heat_count[0] >= 1) {
@@ -595,7 +582,7 @@ void ShootTask()
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             if (shoot_cmd_recv.friction_mode == FRICTION_OFF) break;
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
-            // DJIMotorSetRef(loader, -shoot_cmd_recv.shoot_rate * 360 * REDUCTION_RATIO_LOADER / 8);
+            DJIMotorSetRef(loader, -shoot_cmd_recv.shoot_rate * 360 * REDUCTION_RATIO_LOADER / 8);
             // x颗/秒换算成速度: 已知一圈的载弹量,由此计算出1s需要转的角度,注意换算角速度(DJIMotor的速度单位是angle per second)
 #endif
             break;
@@ -603,8 +590,8 @@ void ShootTask()
         case LOAD_REVERSE:
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
-            // DJIMotorSetRef(loader, 30000);
-            ;
+            DJIMotorSetRef(loader, 30000);
+            
 // x颗/秒换算成速度: 已知一圈的载弹量,由此计算出1s需要转的角度,注意换算角速度(DJIMotor的速度单位是angle per second)
 #endif
             break;

@@ -14,6 +14,7 @@
 #include "chassis.h"
 #include "robot_def.h"
 #include "dji_motor.h"
+#include "DMmotor.h"
 #include "super_cap.h"
 #include "message_center.h"
 #include "referee_init.h"
@@ -25,6 +26,7 @@
 #include "arm_math.h"
 #include "power_calc.h"
 #include "tool.h"
+#include "remote_control.h"
 
 /* 根据robot_def.h中的macro自动计算的参数 */
 #define HALF_WHEEL_BASE  (WHEEL_BASE / 2.0f)     // 半轴距
@@ -53,12 +55,15 @@ static Chassis_Upload_Data_s chassis_feedback_data; // 底盘回传的反馈数�
 
 SuperCapInstance *cap;                                              // 超级电容
 static DJIMotorInstance *motor_lf, *motor_rf, *motor_lb, *motor_rb; // left right forward back
+DMMotorInstance *joint_l, *joint_r;
 volatile uint8_t superCap_watchdog;
 // 为了方便调试加入的量
 static uint8_t center_gimbal_offset_x = CENTER_GIMBAL_OFFSET_X; // 云台旋转中心距底盘几何中心的距离,前后方向,云台位于正中心时默认设为0
 static uint8_t center_gimbal_offset_y = CENTER_GIMBAL_OFFSET_Y; // 云台旋转中心距底盘几何中心的距离,左右方向,云台位于正中心时默认设为0
 
 static INS_Instance *Chassis_IMU_data; // 底盘IMU数据
+// extern INS_Instance *gimbal_IMU_data; // ???IMU????
+extern RC_ctrl_t rc_ctrl[2]; 
 // 跟随模式底盘的pid
 // 目前没有设置单位，有些不规范，之后有需要再改
 static PIDInstance Chassis_Follow_PID = {
@@ -81,6 +86,41 @@ static float vt_lf, vt_rf, vt_lb, vt_rb;         // 底盘速度解算后的临�
 
 void ChassisInit()
 {
+#if defined(CHASSIS_BOARD)
+    BMI088_Init_Config_s config = {
+        .acc_int_config  = {.GPIOx = GPIOC, .GPIO_Pin = GPIO_PIN_4},
+        .gyro_int_config = {.GPIOx = GPIOC, .GPIO_Pin = GPIO_PIN_5},
+        .heat_pid_config = {
+            .Kp            = 0.32f,
+            .Ki            = 0.0004f,
+            .Kd            = 0,
+            .Improve       = PID_IMPROVE_NONE,
+            .IntegralLimit = 0.90f,
+            .MaxOut        = 0.95f,
+        },
+        .heat_pwm_config = {
+            .htim      = &htim10,
+            .channel   = TIM_CHANNEL_1,
+            .dutyratio = 0,
+            .period    = 5000 - 1,
+        },
+        .spi_acc_config = {
+            .GPIOx      = GPIOA,
+            .cs_pin     = GPIO_PIN_4,
+            .spi_handle = &hspi1,
+        },
+        .spi_gyro_config = {
+            .GPIOx      = GPIOB,
+            .cs_pin     = GPIO_PIN_0,
+            .spi_handle = &hspi1,
+        },
+        .cali_mode = BMI088_CALIBRATE_ONLINE_MODE,
+        //.cali_mode = BMI088_LOAD_PRE_CALI_MODE,
+        .work_mode = BMI088_BLOCK_PERIODIC_MODE,
+
+    };
+    Chassis_IMU_data = INS_Init(BMI088Register(&config)); // IMU??????,???????????????yaw????????????????
+#endif
     #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
     // 四个轮子的参数一样,改tx_id和反转标志位即可
     Motor_Init_Config_s chassis_motor_config = {
@@ -119,6 +159,26 @@ void ChassisInit()
     chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
     motor_lb                                                               = DJIMotorInit(&chassis_motor_config);
 
+    Motor_Init_Config_s joint_motor_config = {
+        .can_init_config.can_handle = &hcan1,
+        .motor_type = DM_Motor,
+        .controller_setting_init_config = {
+            .control_range = {
+                .P_max = 12.5,
+                .V_max = 10,
+                .T_max = 28,
+            },
+        },
+    };
+    
+    joint_motor_config.can_init_config.tx_id = 0x01;
+    joint_motor_config.can_init_config.rx_id = 0x11;
+    joint_l = DMMotorInit(&joint_motor_config);
+    
+    joint_motor_config.can_init_config.tx_id = 0x02;
+    joint_motor_config.can_init_config.rx_id = 0x12;
+    joint_r = DMMotorInit(&joint_motor_config);
+
     SuperCap_Init_Config_s cap_conf = {
         .can_config = {
             .can_handle = &hcan2,
@@ -128,53 +188,7 @@ void ChassisInit()
     cap = SuperCapInit(&cap_conf); // 超级电容初始化
     #endif
 
-    // 发布订阅初始化,如果为双板,则需要can comm来传递消息
-#ifdef CHASSIS_BOARD
-    // BMI088_Init_Config_s config = {
-    //     .acc_int_config  = {.GPIOx = GPIOC, .GPIO_Pin = GPIO_PIN_4},
-    //     .gyro_int_config = {.GPIOx = GPIOC, .GPIO_Pin = GPIO_PIN_5},
-    //     .heat_pid_config = {
-    //         .Kp            = 0.32f,
-    //         .Ki            = 0.0004f,
-    //         .Kd            = 0,
-    //         .Improve       = PID_IMPROVE_NONE,
-    //         .IntegralLimit = 0.90f,
-    //         .MaxOut        = 0.95f,
-    //     },
-    //     .heat_pwm_config = {
-    //         .htim      = &htim10,
-    //         .channel   = TIM_CHANNEL_1,
-    //         .dutyratio = 0,
-    //         .period    = 5000 - 1,
-    //     },
-    //     .spi_acc_config = {
-    //         .GPIOx      = GPIOA,
-    //         .cs_pin     = GPIO_PIN_4,
-    //         .spi_handle = &hspi1,
-    //     },
-    //     .spi_gyro_config = {
-    //         .GPIOx      = GPIOB,
-    //         .cs_pin     = GPIO_PIN_0,
-    //         .spi_handle = &hspi1,
-    //     },
-    //     .cali_mode = BMI088_LOAD_PRE_CALI_MODE,
-    //     .work_mode = BMI088_BLOCK_PERIODIC_MODE,
 
-    // };
-    // Chassis_IMU_data = INS_Init(BMI088Register(&config)); // IMU先初始化,获取姿态数据指针赋给yaw电机的其他数据来源
-//    Chassis_IMU_data = INS_Init(); // 底盘IMU初始化
-
-    // CANComm_Init_Config_s comm_conf = {
-    //     .can_config = {
-    //         .can_handle = &hcan2,
-    //         .tx_id      = 0x311,
-    //         .rx_id      = 0x312,
-    //     },
-    //     .recv_data_len = sizeof(Chassis_Ctrl_Cmd_s_half_float),
-    //     .send_data_len = sizeof(Chassis_Upload_Data_s),
-    // };
-    // chasiss_can_comm = CANCommInit(&comm_conf); // can comm初始化
-#endif                                          // CHASSIS_BOARD
     motor_lb->motor_controller.speed_PID.Iout=0;motor_rb->motor_controller.speed_PID.Iout=0;
     motor_lf->motor_controller.speed_PID.Iout=0;motor_rf->motor_controller.speed_PID.Iout=0;
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD) // 单板控制整车,则通过pubsub来传递消息
@@ -191,7 +205,6 @@ void ChassisInit()
  * @brief 计算每个轮毂电机的输出,正运动学解算
  *        用宏进行预替换减小开销,运动解算具体过程参考教程
  */
-float vt_text[4];
 float vxy_k=1,super_vxy_k=2;//小陀螺wz和vx，vy的比例
 static void MecanumCalculate()
 {
@@ -199,15 +212,6 @@ static void MecanumCalculate()
     vt_rf = -chassis_vx + chassis_vy - chassis_cmd_recv.wz * RF_CENTER;
     vt_lb = -chassis_vx + chassis_vy + chassis_cmd_recv.wz * LB_CENTER;
     vt_rb = -chassis_vx - chassis_vy - chassis_cmd_recv.wz * RB_CENTER;
-    // chassis_vx*=3;
-    // vt_lf = -chassis_vx  ;
-    // vt_rf = -chassis_vx ;
-    // vt_lb = -chassis_vx  ;
-    // vt_rb = -chassis_vx  ;
-    // vt_text[0]=vt_lf;
-    // vt_text[1]=vt_rf;
-    // vt_text[2]=vt_lb;
-    // vt_text[3]=vt_rb;
 }
 
 static ramp_t super_ramp;
@@ -411,6 +415,17 @@ static float getWzspeed(uint16_t powerLimit){
         break;
     }
 }
+
+float offset_angle_watch;
+float angle_l,angle_r;
+float angle_target, angle_l_target, angle_r_target;
+float l_offset = -0.3717212, r_offset = -2.062066;
+float length_l_measure,length_r_measure,length_measure;
+float length_target;
+float angle_test = 0.17;
+// float length_test = 0.2;
+float leg_p = 0.1;
+
 /* 机器人底盘控制核心任务 */
 void ChassisTask()
 {
@@ -437,19 +452,24 @@ void ChassisTask()
     //chassis_cmd_recv.offset_angle=half_to_float(chassis_cmd_recv_half_float.offset_angle);
     //chassis_cmd_recv.SuperCap_flag_from_user=chassis_cmd_recv_half_float.SuperCap_flag_from_user;
     // chassis_cmd_recv.chassis_mode=chassis_rs485_recv.chassis_mode;//chassis_cmd_recv_half_float.chassis_mode;
-#endif                                                         // CHASSIS_BOARD
+
     if (chassis_cmd_recv.chassis_mode == CHASSIS_ZERO_FORCE){ // 如果出现重要模块离线或遥控器设置为急停,让电机停止
     
         DJIMotorStop(motor_lf);
         DJIMotorStop(motor_rf);
         DJIMotorStop(motor_lb);
         DJIMotorStop(motor_rb);
+        DMMotorStop(joint_l);
+        DMMotorStop(joint_r);
     } else { // 正常工作
         DJIMotorEnable(motor_lf);
         DJIMotorEnable(motor_rf);
         DJIMotorEnable(motor_lb);
         DJIMotorEnable(motor_rb);
-     }
+        DMMotorEnable1(joint_l);
+        DMMotorEnable1(joint_r);
+    }
+#endif                                                         // CHASSIS_BOARD
     static float offset_angle;
     static float sin_theta, cos_theta;
     static float current_speed_vw, vw_set;
@@ -458,6 +478,43 @@ void ChassisTask()
     offset_angle       = chassis_cmd_recv.offset_angle + chassis_cmd_recv.gimbal_error_angle;
     offset_angle_watch = offset_angle;
     
+    angle_l = joint_l->measure.pos - l_offset;
+    angle_r = -joint_r->measure.pos + r_offset;
+    length_l_measure = -0.05814 * angle_l * angle_l + 0.2072 *angle_l + 0.107;
+    length_r_measure = -0.05814 * angle_r * angle_r + 0.2072 *angle_r + 0.107;
+    length_measure = (length_l_measure + length_r_measure)/2;
+    length_target = length_measure - leg_p * (Chassis_IMU_data->output.INS_angle[0] - 0.1);
+    angle_target = (-0.2072 + __builtin_sqrtf(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);
+    angle_l_target = angle_target + l_offset;
+    angle_r_target = r_offset - angle_target;
+
+    joint_l->ctrl.kp_set = 150;
+    joint_l->ctrl.kd_set = 2;
+    // joint_l->ctrl.tor_set = 4;
+    // joint_l->ctrl.pos_set = l_offset + angle_test;
+    // joint_l->ctrl.pos_set = angle_l_target;
+
+    joint_r->ctrl.kp_set = 150;
+    joint_r->ctrl.kd_set = 2;
+    // joint_r->ctrl.tor_set = -4;
+    // joint_r->ctrl.pos_set = r_offset - angle_test;
+    // joint_r->ctrl.pos_set = angle_r_target;
+
+    if(rc_ctrl[0].rc.switch_left == RC_SW_UP)
+    {
+        joint_l->ctrl.tor_set = -4;
+        joint_l->ctrl.pos_set = l_offset + angle_test;
+        joint_r->ctrl.tor_set = 4;
+        joint_r->ctrl.pos_set = r_offset - angle_test;
+    }
+    else
+    {
+        joint_l->ctrl.tor_set = 4;
+        joint_l->ctrl.pos_set = angle_l_target;
+        joint_r->ctrl.tor_set = -4;
+        joint_r->ctrl.pos_set = angle_r_target;
+    }
+
     // 根据控制模式设定旋转速度
     switch (chassis_cmd_recv.chassis_mode) {
         case CHASSIS_NO_FOLLOW:

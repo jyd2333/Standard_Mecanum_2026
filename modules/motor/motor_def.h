@@ -118,9 +118,8 @@ typedef enum {
     LK_MS5005,
     DR_PDA04,
     DR_B0X,
-    DM_4310,
-    DM_4340
-} Motor_Type_e;
+    DM_Motor,
+}  Motor_Type_e;
 
 /**
  * @brief 电机控制器初始化结构体,包括三环PID的配置以及两个反馈数据来源指针
@@ -141,13 +140,6 @@ typedef struct
     PIDInstance follow_speed_PID;
     PIDInstance follow_angle_PID;
 } Motor_Controller_Init_s;
-
-/*HERO*/
-typedef struct
-{
-    Motor_Controller_Init_s gyro_mode;
-    Motor_Controller_Init_s motor_mode;
-} Motor_PID_Setting_s;
 
 /* 用于初始化CAN电机的结构体,各类电机通用 */
 typedef struct

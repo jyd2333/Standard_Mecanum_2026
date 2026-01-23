@@ -44,10 +44,9 @@ typedef struct
 	float Kd;
 	float Tmos;
 	float Tcoil;
-	
 	float last_pos;
-	int32_t total_round;
-	float total_position;
+	int total_round;
+	float total_pos;
 }motor_fbpara_t;
 
 
