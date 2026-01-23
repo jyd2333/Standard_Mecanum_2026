@@ -92,7 +92,7 @@ void RobotTask()
  #endif
 
  #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
- //   ChassisTask();
+   ChassisTask();
  #endif
     
 }
