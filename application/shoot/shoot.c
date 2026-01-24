@@ -139,13 +139,13 @@ void ShootInit()
         },
         .motor_type = M3508};
 
-    friction_config.can_init_config.tx_id                                = 2; // 左摩擦轮,改txid和方向就行
-    friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_REVERSE;
+    friction_config.can_init_config.tx_id                                = 4; // 左摩擦轮,改txid和方向就行
+    friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_NORMAL;
     friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardr2;
     friction_l                                                           = DJIMotorInit(&friction_config);
     // 三摩擦轮外加电机
-    friction_config.can_init_config.tx_id                             = 1;
-    friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
+    friction_config.can_init_config.tx_id                             = 2; // 右摩擦轮,改txid和方向就行
+    friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
     friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardl;
     friction_up2                                                      = DJIMotorInit(&friction_config);
     DJIMotorStop(friction_l);
