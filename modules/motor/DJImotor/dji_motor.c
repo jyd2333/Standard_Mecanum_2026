@@ -51,10 +51,10 @@ static CANInstance sender_assignment[6] = {
 static CANInstance sender_assignment[6] = {
     [0] = {.can_handle = &hcan1, .txconf.StdId = 0x1FF, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
     [1] = {.can_handle = &hcan1, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [2] = {.can_handle = &hcan1, .txconf.StdId = 0x2fe, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [2] = {.can_handle = &hcan1, .txconf.StdId = 0x1fe, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
     [3] = {.can_handle = &hcan2, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
     [4] = {.can_handle = &hcan2, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [5] = {.can_handle = &hcan2, .txconf.StdId = 0x1fe, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [5] = {.can_handle = &hcan2, .txconf.StdId = 0x2fe, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
       //DMmotor
     // [6] = {.can_handle = &hcan2, .txconf.StdId = 0x102, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}, .rx_id=0x01, .rx_buff = {0}, .rx_len=8},   //DMmotor
     // [7] = {.can_handle = &hcan2, .txconf.StdId = 0x102, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xfc}},
@@ -243,66 +243,6 @@ DJIMotorInstance *DJIMotorInit(Motor_Init_Config_s *config)
     return instance;
 }
 
-// int float_to_uint(float x_float, float x_min, float x_max, int bits)
-// {
-//     /* Converts a float to an unsigned int, given range and number of bits */
-//     float span = x_max - x_min;
-//     float offset = x_min;
-//     return (int) ((x_float-offset)*((float)((1<<bits)-1))/span);
-// }
-
-
-//达妙电机控制
-// void DM4310_mit_ctrl(uint16_t motor_id, float pos, float vel,float kp, float kd, float tor)
-// {   
-//     uint8_t data[8];
-//     uint16_t pos_tmp,vel_tmp,kp_tmp,kd_tmp,tor_tmp;
-//     uint16_t id = motor_id + 0x00;
-
-//     pos_tmp = float_to_uint(pos, -12.5, 12.5, 16);
-//     vel_tmp = float_to_uint(vel, -45.0, 45.0, 12);
-//     tor_tmp = float_to_uint(tor, -18.0, 18.0, 12);
-//     kp_tmp  = float_to_uint(kp,  0.0, 500.0, 12);
-//     kd_tmp  = float_to_uint(kd,  0.0, 5.0, 12);
-
-//     data[0] = (pos_tmp >> 8);
-//     data[1] = pos_tmp;
-//     data[2] = (vel_tmp >> 4);
-//     data[3] = ((vel_tmp&0xF)<<4)|(kp_tmp>>8);
-//     data[4] = kp_tmp;
-//     data[5] = (kd_tmp >> 4);
-//     data[6] = ((kd_tmp&0xF)<<4)|(tor_tmp>>8);
-//     data[7] = tor_tmp;
-
-//     memcpy(sender_assignment[6].tx_buff,&data,8);
-// }
-
-
-// void pos_ctrl(uint16_t motor_id, float pos, float vel)
-// {
-//     uint16_t id;
-//     uint8_t *pbuf, *vbuf;
-//     uint8_t data[8];
-    
-//     id = motor_id + 0x100;
-//     pbuf=(uint8_t*)&pos;
-//     vbuf=(uint8_t*)&vel;
-    
-//     data[0] = *pbuf;
-//     data[1] = *(pbuf+1);
-//     data[2] = *(pbuf+2);
-//     data[3] = *(pbuf+3);
-
-//     data[4] = *vbuf;
-//     data[5] = *(vbuf+1);
-//     data[6] = *(vbuf+2);
-//     data[7] = *(vbuf+3);
-    
-//     memcpy(sender_assignment[6].tx_buff,&data,8);
-// }
-
-
-
 
 /* 电流只能通过电机自带传感器监测,后续考虑加入力矩传感器应变片等 */
 void DJIMotorChangeFeed(DJIMotorInstance *motor, Closeloop_Type_e loop, Feedback_Source_e type)
@@ -445,94 +385,13 @@ int index = 0;
 #endif
 
 #if defined(CHASSIS_BOARD)
-// //dm4310拨弹盘控制
-// //上电使能
-// static uint8_t enable_cnt=0;
-// static uint32_t init_cnt=0;
-// static uint8_t get_pos =0;
-// static float DM_pos;
-// static int prev_dm_enable_flag = 0;
-// static float target_pos = 0.0f;  // 目标位置
-// static float offset_pos = 0.425f;    // 预设位置
-// static uint8_t pos_num=0;
-//    if(!enable_cnt){
-//         CANTransmit(&sender_assignment[7], 1);
-//        init_cnt++;
-//     }
-//     enable_cnt=(enable_cnt+1)%10;//使能信息以100hz发送
-
-//    if (init_cnt == 10) { // 100ms后获取初始定位且不管是否掉电只获取一次
-//        DM_pos=DM4310.pos;//获取初始定位
-//         //  DM_pos = 0.8f; // 假设初始位置为0,实际应用中应根据实际情况获取
-//         offset_pos-=2*M_PI;
-//         for(pos_num=0;pos_num<13;pos_num++)//拨盘就近就位
-//         {
-//             if((DM_pos-offset_pos)<(M_PI/3.0f))
-//             {
-//                 target_pos=offset_pos;
-//                 break;
-//             }
-//             offset_pos += M_PI /3.0f;
-//         }
-//        get_pos = 1; // 获取初始定位成功
-//    }
-
-//    //拨弹盘单发模式
-
-// // 检测上升沿（0→1）
-//    if(get_pos)
-//    {
-//         if (DM_enable_flag == 1 && prev_dm_enable_flag == 0)
-//         {
-//             // 记录触发前的位置
-//             target_pos = target_pos - M_PI / 3.0f;   // 计算目标位置
-//             pos_ctrl(0x02, target_pos, -20.0f);      // 发送一次新位置
-            
-//             // CANTransmit(&sender_assignment[6], 1);
-//             // hold_pos = target_pos;  // 更新hold_pos为目标位置
-//         }
-        
-//         // 根据标志位状态持续发送对应位置
-//         // if (DM_enable_flag == 1)
-//         // {
-//             // 持续发送触发后的目标位置（若需要持续生效）
-//         pos_ctrl(0x02, target_pos, -20.0f);
-//         CANTransmit(&sender_assignment[6], 1);
-//         // }
-//         // else
-//         // {
-//         //     // 标志位=0时，保持触发前的位置（hold_pos）
-//         //     pos_ctrl(0x02, hold_pos, -20.0f);
-//         //     CANTransmit(&sender_assignment[6], 1);
-//         // }
-//     }
-//     prev_dm_enable_flag = DM_enable_flag;  // 更新上一次标志状态
-
-
-//   if(DM_enable_flag==1){ //电机使能
-//         //PID计算
-        
-//         //参数赋值解算
-//       //  if(get_pos==1){
-//             pos_ctrl(0x02,DM_pos,0.0);
-//             CANTransmit(&sender_assignment[6], 1);
-//       //  }
-        
-//     }
-//     else{ 
-        
-//         pos_ctrl(0x02,0.0,0.0);
-//         CANTransmit(&sender_assignment[6], 1);
-//     } //速度为0             
-            
-
+       
     for (size_t i = 0; i < 6; ++i) {   //其他大疆电机发送
         if (sender_enable_flag[i]) {
             // TODO:测试调试
             CANTransmit(&sender_assignment[i], 1);
         }
     }
-    
 #endif
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     memcpy(sender_assignment[6].tx_buff,vision_send_data+1,8);

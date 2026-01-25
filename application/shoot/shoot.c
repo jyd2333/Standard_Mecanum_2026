@@ -10,7 +10,7 @@
 #include "DMmotor.h"
 
 /* 对于双发射机构的机器人,将下面的数据封装成结构体即可,生成两份shoot应用实例 */
-static DJIMotorInstance *friction_l, *friction_up2; // 拨盘电机
+static DJIMotorInstance *friction_l, *friction_r; // 拨盘电机
 // float DM_4310_speed_target = 0;                                                                                             // DM电机目标
 // int DM_enable_flag         = 0;                                                                                             // DM电机指令,1转0停
 static Publisher_t *shoot_pub;
@@ -119,7 +119,7 @@ void ShootInit()
         },
         .controller_param_init_config = {
             .speed_PID = {
-                .Kp            = 0.8,
+                .Kp            = 0.3,
                 .Ki            = 0,
                 .Kd            = 0,
                 .Improve       = PID_Integral_Limit,
@@ -135,21 +135,21 @@ void ShootInit()
             .outer_loop_type    = SPEED_LOOP,
             .close_loop_type    = SPEED_LOOP,
             .motor_reverse_flag = MOTOR_DIRECTION_REVERSE,
-            .feedforward_flag   = CURRENT_FEEDFORWARD,
+            // .feedforward_flag   = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508};
 
-    friction_config.can_init_config.tx_id                                = 4; // 左摩擦轮,改txid和方向就行
+    friction_config.can_init_config.tx_id                                = 5; // 左摩擦轮,改txid和方向就行
     friction_config.controller_setting_init_config.motor_reverse_flag    = MOTOR_DIRECTION_NORMAL;
-    friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardr2;
+    // friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardr2;
     friction_l                                                           = DJIMotorInit(&friction_config);
     // 三摩擦轮外加电机
-    friction_config.can_init_config.tx_id                             = 2; // 右摩擦轮,改txid和方向就行
+    friction_config.can_init_config.tx_id                             = 6; // 右摩擦轮,改txid和方向就行
     friction_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
-    friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardl;
-    friction_up2                                                      = DJIMotorInit(&friction_config);
+    // friction_config.controller_param_init_config.current_feedforward_ptr = &friction_feedforwardl;
+    friction_r                                                      = DJIMotorInit(&friction_config);
     DJIMotorStop(friction_l);
-    DJIMotorStop(friction_up2);
+    DJIMotorStop(friction_r);
     // 限位电机
     // Motor_Init_Config_s limit_config = {
     //     .can_init_config = {
@@ -183,7 +183,6 @@ void ShootInit()
         .can_init_config = {
             .can_handle = &hcan2,
             .tx_id      = 1,
-            .rx_id      =1,
         },
         .controller_param_init_config = {
             // .angle_PID = {
@@ -425,7 +424,7 @@ void ShootTask()
         // DJIMotorStop(friction_up);
         // DJIMotorStop(friction_l2);
         // DJIMotorStop(friction_r2);
-        DJIMotorStop(friction_up2);
+        DJIMotorStop(friction_r);
         // DJIMotorStop(limit);
 #endif
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
@@ -441,7 +440,7 @@ void ShootTask()
         // DJIMotorEnable(friction_up);
         // DJIMotorEnable(friction_l2);
         // DJIMotorEnable(friction_r2);
-        DJIMotorEnable(friction_up2);
+        DJIMotorEnable(friction_r);
         // DJIMotorEnable(limit);
 // DJIMotorStop(friction_r);
 #endif
@@ -620,7 +619,7 @@ void ShootTask()
     // DJIMotorSetRef(friction_up, fric_speed);
     // DJIMotorSetRef(friction_l2, fric2_speed);
     // DJIMotorSetRef(friction_r2, fric2_speed);
-    DJIMotorSetRef(friction_up2, fric2_speed);
+    DJIMotorSetRef(friction_r, fric2_speed);
     shoot_speed  = fric_speed;
     shoot2_speed = fric2_speed;
 #endif

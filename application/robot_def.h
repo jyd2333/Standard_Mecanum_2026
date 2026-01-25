@@ -20,46 +20,28 @@
 #define Chassis_Upload_Data_s_uart_size sizeof(Chassis_Upload_Data_s_uart)
 /* 开发板类型定义,烧录时注意不要弄错对应功能;修改定义后需要重新编译,只能存在一个定义! */
 //#define ONE_BOARD // 单板控制整车
-#define CHASSIS_BOARD //底盘板
-// #define GIMBAL_BOARD  //云台板
+// #define CHASSIS_BOARD //底盘板
+#define GIMBAL_BOARD  //云台板
 #define VISION_USE_VCP // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
-#define OLD    0 // 全向轮具体参数，1为新车或（唐珣），0为老车（唐枫）
-#define NEW    0
-#define NEWNEW 1 // 新新车
 // #define BIG_HEAD
 /* 机器人重要参数定义,注意根据不同机器人进行修改,浮点数需要以.0或f结尾,无符号以u结尾 */
 // 云台参数
-#if OLD
 
-#define YAW_CHASSIS_ALIGN_ECD     800 // 云台和底盘对齐指向相同方向时的电机编码器值,若对云台有机械改动需要修改
-#define YAW_ECD_GREATER_THAN_4096  0   // ALIGN_ECD值是否大于4096,是为1,否为0;用于计算云台偏转角度
-#define PITCH_HORIZON_ECD         5210 // 云台处于水平位置时编码器值,若对云台有机械改动需要修改
-#define PITCH_POS_UP_LIMIT_ECD    5750 // 云台竖直方向高处限位编码器值,若对云台有机械改动需要修改
-#define PITCH_POS_DOWN_LIMIT_ECD  4650 // 云台竖直方向低处限位编码器值,若对云台有机械改动需要修改
 
-#endif
 
-#if NEW
+#define PITCH_POS_MAX_ECD           4650
+#define PITCH_POS_MIN_ECD           5700
+#define YAW_CHASSIS_ALIGN_ECD       817 // 云台和底盘对齐指向相同方向时的电机编码器值,若对云台有机械改动需要修改
+#define YAW_ECD_GREATER_THAN_4096   0    // ALIGN_ECD值是否大于4096,是为1,否为0;用于计算云台偏转角度
+#define PITCH_HORIZON_ECD           5225 // 云台处于水平位置时编码器值,若对云台有机械改动需要修改
+#define PITCH_POS_UP_LIMIT_ECD      6191 // 云台竖直方向高处限位编码器值,若对云台有机械改动需要修改
+#define PITCH_POS_DOWN_LIMIT_ECD    4830 // 云台竖直方向低处限位编码器值,若对云台有机械改动需要修改
+#define JOINT_LEFT_UP_LIMIT         0.73f
+#define JOINT_LEFT_DOWN_LIMIT       -0.036f
+#define JOINT_RIGHT_UP_LIMIT         -2.37f
+#define JOINT_RIGHT_DOWN_LIMIT       -3.14f
 
-#define YAW_CHASSIS_ALIGN_ECD     7141 // 云台和底盘对齐指向相同方向时的电机编码器值,若对云台有机械改动需要修改
-#define YAW_ECD_GREATER_THAN_4096 1    // ALIGN_ECD值是否大于4096,是为1,否为0;用于计算云台偏转角度
-#define PITCH_HORIZON_ECD         1355 // 云台处于水平位置时编码器值,若对云台有机械改动需要修改
-#define PITCH_POS_UP_LIMIT_ECD    868  // 云台竖直方向高处限位编码器值,若对云台有机械改动需要修改
-#define PITCH_POS_DOWN_LIMIT_ECD  1940 // 云台竖直方向低处限位编码器值,若对云台有机械改动需要修改
-
-#endif // 0
-
-#ifdef NEWNEW
-#define PITCH_POS_MAX_ECD 4650
-#define PITCH_POS_MIN_ECD 5700
-#define YAW_CHASSIS_ALIGN_ECD     172 // 云台和底盘对齐指向相同方向时的电机编码器值,若对云台有机械改动需要修改
-#define YAW_ECD_GREATER_THAN_4096 0    // ALIGN_ECD值是否大于4096,是为1,否为0;用于计算云台偏转角度
-#define PITCH_HORIZON_ECD         5225 // 云台处于水平位置时编码器值,若对云台有机械改动需要修改
-#define PITCH_POS_UP_LIMIT_ECD    6191 // 云台竖直方向高处限位编码器值,若对云台有机械改动需要修改
-#define PITCH_POS_DOWN_LIMIT_ECD  4830 // 云台竖直方向低处限位编码器值,若对云台有机械改动需要修改
-
-#endif // 0
 
 #define PITCH_FEED_TYPE     1 // 云台PITCH轴反馈值来源:编码器为0,陀螺仪为1
 #define PITCH_INS_FEED_TYPE 1//1 // 云台PITCH轴陀螺仪反馈:角度值为0,弧度制为1
@@ -100,8 +82,8 @@
 #define BMI088_AMBIENT_TEMPERATURE 25.0f
 // 设置陀螺仪数据相较于云台的yaw,pitch,roll的方向
 #define BMI088_BOARD_INSTALL_SPIN_MATRIX \
-    {0.0f, 1.0f, 0.0f},                 \
-    {-1.0f, 0.0f, 0.0f},              \
+    {0.0f, -1.0f, 0.0f},                 \
+    {1.0f, 0.0f, 0.0f},              \
     {0.0f, 0.0f, 1.0f}
 
 #define INS_YAW_ADDRESS_OFFSET   2 // 陀螺仪数据相较于云台的yaw的方向
@@ -145,13 +127,20 @@ typedef enum {
     CHASSIS_NO_FOLLOW,         // 不跟随，允许全向平移
     CHASSIS_FOLLOW_GIMBAL_YAW, // 跟随模式，底盘叠加角度环控制
     CHASSIS_REVERSE_ROTATE,    // 反方向小陀螺
+    CHASSIS_CLIMB,             // 上台阶
+    CHASSIS_CLIMB_RETRACT,     // 收腿
 } chassis_mode_e;
 
+typedef enum {
+    LEG_ACTIVE_SUSPENSION = 0,  // 主动悬挂
+    LEG_CLIMB,                  // 上台阶
+    LEG_CLIMB_RETRACT,          // 收腿
+} leg_mode_e;
 // 云台模式设置
 typedef enum {
     GIMBAL_ZERO_FORCE = 0, // 电流零输入
     GIMBAL_GYRO_MODE,      // 云台陀螺仪反馈模式,反馈值为陀螺仪pitch,total_yaw_angle,底盘可以为小陀螺和跟随模式
-    GIMBAL_MOTOR_MODE,     //编码器反馈模式，英雄部署模式可用
+    GIMBAL_MOTOR_MODE,     // 编码器反馈模式，英雄部署模式可用
 } gimbal_mode_e;
 typedef enum{
     none_version_control,

@@ -97,23 +97,23 @@ void GimbalInit()
                 .DeadBand      = 0.0f,
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .IntegralLimit = 5,
-                .MaxOut = 5,
+                .MaxOut = 1,
             },
             .speed_PID = {
                 .Kp            = 9000, // 18000, // 10500,//1000,//10000,// 11000
-                .Ki            = 7000,    // 0
+                .Ki            = 0,    // 0
                 .Kd            = 0,    // 10, // 30
-                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement | PID_OutputFilter,
-                .IntegralLimit = 12000,
-                .MaxOut        = 16384,//25000, // 20000
-                .Output_LPF_RC=1,//0.4,
-                .CoefA=0.2,
-                .CoefB=2,//0.3,
+                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_OutputFilter,
+                .IntegralLimit = 5000,
+                .MaxOut        = 3000,//16384,//25000, // 20000
+                // .Output_LPF_RC=1,//0.4,
+                // .CoefA=0.2,
+                // .CoefB=2,//0.3,
             },
             .other_angle_feedback_ptr = &chassis_rs485_recv.yaw_angle,//&gimbal_IMU_data->output.INS_angle_deg[INS_YAW_ADDRESS_OFFSET], // yaw????????
             // ?????????????????????,?????,ins_task.md????c???bodyframe????????
             .other_speed_feedback_ptr = &chassis_rs485_recv.yaw_gyro,//&yaw_gyro_twoboard,//&chassis_rs485_recv.yaw_gyro-&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],//,&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],
-            .current_feedforward_ptr=&yaw_current_feedforward,
+            // .current_feedforward_ptr=&yaw_current_feedforward,
             //.speed_feedforward_ptr=&yaw_speedFeed,
         },
         .controller_setting_init_config = {
@@ -122,7 +122,7 @@ void GimbalInit()
             .outer_loop_type       = ANGLE_LOOP,
             .close_loop_type       = ANGLE_LOOP | SPEED_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
-            .feedforward_flag  =CURRENT_FEEDFORWARD,
+            // .feedforward_flag  =CURRENT_FEEDFORWARD,
         },
         .motor_type = GM6020};
         yaw_motor   = DJIMotorInit(&yaw_config);
@@ -156,7 +156,7 @@ void GimbalInit()
             .spi_handle = &hspi1,
         },
         .cali_mode = BMI088_CALIBRATE_ONLINE_MODE,
-        //.cali_mode = BMI088_LOAD_PRE_CALI_MODE,
+        // .cali_mode = BMI088_LOAD_PRE_CALI_MODE,
         .work_mode = BMI088_BLOCK_PERIODIC_MODE,
 
     };
@@ -375,9 +375,10 @@ void GimbalTask()
             break;
         // ?????????????,???????yaw?????offset??????????????????
         case GIMBAL_GYRO_MODE: // ?????????????        
-            DJIMotorEnable(yaw_motor);
-            DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP, OTHER_FEED);
-            DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
+            // DJIMotorEnable(yaw_motor);
+            DJIMotorStop(yaw_motor);
+            // DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP, OTHER_FEED);
+            // DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
             if (gimbal_cmd_recv.nuc_mode == version_control)
             {
                 float error = gimbal_cmd_recv.yaw_version - *yaw_motor->motor_controller.other_angle_feedback_ptr;

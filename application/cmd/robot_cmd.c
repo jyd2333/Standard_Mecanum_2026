@@ -93,9 +93,7 @@ static hwt606_info_t *HWT606_data;
 uint8_t UI_SendFlag = 1; // UI发送标志位
 extern uint16_t g_power_set ; // 功率设置
 uint8_t auto_rune; // 自瞄打符标志位
-uint8_t lob_mode=0;//lob_shoot
-uint8_t telescope_pos = 0;//0:normal 1:zoom
-uint8_t fpv_pos = 0;//0:normal 1:lob
+
 float rec_yaw, rec_pitch;
 float fire_advice;
 // #define Chassis_Ctrl_Cmd_s_uart_size sizeof(Chassis_Ctrl_Cmd_s_uart)
@@ -715,7 +713,7 @@ static void RemoteControlSet()
 {
     shoot_cmd_send.shoot_mode   = SHOOT_ON; // 发射机构常开
     gimbal_cmd_send.gimbal_mode = GIMBAL_GYRO_MODE;
-    shoot_cmd_send.shoot_rate   = 30; // 射频默认30Hz
+    shoot_cmd_send.shoot_rate   = 16; // 射频默认30Hz
 
 
     //滚轮下拨一下切换自瞄或关闭自瞄
@@ -729,7 +727,6 @@ static void RemoteControlSet()
             else
                 gimbal_cmd_send.nuc_mode = none_version_control;
         }
-
         switch (rc_data[TEMP].rc.switch_left)
         {
             case RC_SW_UP:
@@ -756,7 +753,7 @@ static void RemoteControlSet()
                 {
                     if (fire_advice == 1)
                     {
-                        shoot_cmd_send.load_mode = LOAD_1_BULLET;
+                        shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
                     }
                 }
                 
@@ -774,10 +771,21 @@ static void RemoteControlSet()
             case RC_SW_UP:
                 if (rc_data[LAST].rc.switch_right == RC_SW_MID)
                 {
-                    if (chassis_cmd_send.chassis_mode != CHASSIS_FOLLOW_GIMBAL_YAW)
-                        chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
-                    else
-                        chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
+                    switch(chassis_cmd_send.chassis_mode)
+                    {
+                        case CHASSIS_FOLLOW_GIMBAL_YAW:
+                            chassis_cmd_send.chassis_mode = CHASSIS_CLIMB;
+                            break;
+                        case CHASSIS_CLIMB:
+                            chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_RETRACT;
+                            break;
+                        case CHASSIS_CLIMB_RETRACT:
+                            chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
+                            break;
+                        default:
+                            chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
+                            break;
+                    }
                 }
                 break;
             case RC_SW_DOWN:
@@ -786,8 +794,14 @@ static void RemoteControlSet()
                     if (chassis_cmd_send.chassis_mode != CHASSIS_ROTATE)
                         chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
                     else
-                        chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
+                        chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
                 }
+                break;
+            case RC_SW_MID:
+                if(chassis_cmd_send.chassis_mode == CHASSIS_ZERO_FORCE)
+                    chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;//CHASSIS_FOLLOW_GIMBAL_YAW;
+                break;
+            default:
                 break;
         }
         
@@ -801,45 +815,7 @@ static void RemoteControlSet()
     // 底盘参数
     chassis_cmd_send.vx = 70.0f * (float)rc_data[TEMP].rc.rocker_r1; // 水平方向
     chassis_cmd_send.vy = 70.0f * (float)rc_data[TEMP].rc.rocker_r_; // 竖直方向
-    // if(chassis_cmd_send.chassis_mode==CHASSIS_NO_FOLLOW){
-    //     gimbal_cmd_send.gimbal_mode=GIMBAL_MOTOR_MODE;
-    //     if(gimbal_mode_last==GIMBAL_MOTOR_MODE){
-    //     pitch_control += RAD_TO_ANGLE*PITCH_K* (float)rc_data[TEMP].rc.rocker_l1;
-    //     yaw_control -= 2*YAW_K * (float)rc_data[TEMP].rc.rocker_l_;}
-    //     else {
-    //         yaw_control=chassis_fetch_data_uart.yaw_total_angle;
-    //         }
-    //     gimbal_mode_last=GIMBAL_MOTOR_MODE;
-    // }
-    // else {
-    //     if(gimbal_mode_last==GIMBAL_GYRO_MODE){
-    //     pitch_control += RAD_TO_ANGLE*PITCH_K* (float)rc_data[TEMP].rc.rocker_l1;
-    //     yaw_control -= 2*YAW_K * (float)rc_data[TEMP].rc.rocker_l_;
-    //     }
-    //     else{
-    //     yaw_control=gimbal_fetch_data.gimbal_imu_data->output.Yaw_total_angle_deg;
-    //     }
-    //     gimbal_mode_last=GIMBAL_GYRO_MODE;
-    // }
-    
-    
-        // pitch_control+=alpha_nuc_pitch*nuc_pitch+(1-alpha_nuc_pitch)*nuc_pitch_last;
-        // nuc_yaw=yaw_filiter*nuc_yaw_last+(1-yaw_filiter)*nuc_yaw;
-        
-        // if(fabs(nuc_yaw)<7)yaw_control+=alpha_nuc_yaw*(nuc_yaw-nuc_yaw_d*(nuc_yaw-nuc_yaw_last));
-        // yaw_nuc_err=nuc_yaw-nuc_yaw_last;
-        // yaw_control_last=yaw_control;
-        // nuc_pitch_last=nuc_pitch;
-        // nuc_yaw_last=nuc_yaw;
 
-        // if(gimbal_cmd_send.yaw_version<0){
-        //     YAW_version_PID.Kp=0.01;
-        //     YAW_version_PID.Kd=0.0015;
-        // }
-        // else {
-        //     YAW_version_PID.Kp=0.012;
-        //     YAW_version_PID.Kd=0.0014;
-        // }
     
 //     // // 云台参数
 //     // 云台软件限位
@@ -861,8 +837,7 @@ ramp_t slow_ramp;
  */
 static void ChassisSet()
 {
-    if(lob_mode) chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
-    else chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
+    chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
     // chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
     // chassis_cmd_send.power_limit=100;//临时更改
 
@@ -1093,26 +1068,6 @@ static void KeyGetMode()
         case 0:
             SuperCap_flag_from_user = SUPER_USER_CLOSE;
             break;
-    }
-    switch(rc_data[TEMP].key_count[KEY_PRESS][Key_F] % 2){
-        case 1:
-            if(lob_mode==0)
-            {
-                lob_mode=1;
-                 chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
-                telescope_pos = 1;
-                fpv_pos = 1;
-            }
-        break;
-        case 0:
-            if(lob_mode)
-            {
-                lob_mode=0;
-                 chassis_cmd_send.chassis_mode = CHASSIS_FOLLOW_GIMBAL_YAW;
-                telescope_pos = 0;
-                fpv_pos = 0;
-            }
-        break;
     }
 }
 
