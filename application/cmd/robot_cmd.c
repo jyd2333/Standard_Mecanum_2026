@@ -810,7 +810,7 @@ static void RemoteControlSet()
     
 
 //    HeatControl();
-    pitch_control += /*0.1**/RAD_TO_ANGLE*PITCH_K* (float)rc_data[TEMP].rc.rocker_l1 ;
+    pitch_control += /*0.1*RAD_TO_ANGLE**/PITCH_K* (float)rc_data[TEMP].rc.rocker_l1 ;
     yaw_control -= /*0.05**/YAW_K * (float)rc_data[TEMP].rc.rocker_l_ ;
     // 底盘参数
     chassis_cmd_send.vx = 70.0f * (float)rc_data[TEMP].rc.rocker_r1; // 水平方向

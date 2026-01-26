@@ -20,8 +20,8 @@
 #define Chassis_Upload_Data_s_uart_size sizeof(Chassis_Upload_Data_s_uart)
 /* 开发板类型定义,烧录时注意不要弄错对应功能;修改定义后需要重新编译,只能存在一个定义! */
 //#define ONE_BOARD // 单板控制整车
-// #define CHASSIS_BOARD //底盘板
-#define GIMBAL_BOARD  //云台板
+#define CHASSIS_BOARD //底盘板
+// #define GIMBAL_BOARD  //云台板
 #define VISION_USE_VCP // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
 // #define BIG_HEAD
@@ -39,8 +39,10 @@
 #define PITCH_POS_DOWN_LIMIT_ECD    4830 // 云台竖直方向低处限位编码器值,若对云台有机械改动需要修改
 #define JOINT_LEFT_UP_LIMIT         0.73f
 #define JOINT_LEFT_DOWN_LIMIT       -0.036f
-#define JOINT_RIGHT_UP_LIMIT         -2.37f
-#define JOINT_RIGHT_DOWN_LIMIT       -3.14f
+#define JOINT_RIGHT_UP_LIMIT        -2.37f
+#define JOINT_RIGHT_DOWN_LIMIT      -3.14f
+#define PITCH_DOWN_LIMIT            -0.45f
+#define PITCH_UP_LIMIT              0.45f
 
 
 #define PITCH_FEED_TYPE     1 // 云台PITCH轴反馈值来源:编码器为0,陀螺仪为1
@@ -83,13 +85,12 @@
 // 设置陀螺仪数据相较于云台的yaw,pitch,roll的方向
 #define BMI088_BOARD_INSTALL_SPIN_MATRIX \
     {0.0f, -1.0f, 0.0f},                 \
-    {1.0f, 0.0f, 0.0f},              \
-    {0.0f, 0.0f, 1.0f}
+    {0.0f, 0.0f, -1.0f},              \
+    {1.0f, 0.0f, 0.0f}
 
 #define INS_YAW_ADDRESS_OFFSET   2 // 陀螺仪数据相较于云台的yaw的方向
-#define INS_PITCH_ADDRESS_OFFSET 0 // 陀螺仪数据相较于云台的pitch的方向
-#define INS_ROLL_ADDRESS_OFFSET  1 // 陀螺仪数据相较于云台的roll的方向
-
+#define INS_PITCH_ADDRESS_OFFSET 1 // 陀螺仪数据相较于云台的pitch的方向
+#define INS_ROLL_ADDRESS_OFFSET  0 // 陀螺仪数据相较于云台的roll的方向
 // 检查是否出现主控板定义冲突,只允许一个开发板定义存在,否则编译会自动报错
 #if (defined(ONE_BOARD) && defined(CHASSIS_BOARD)) || \
     (defined(ONE_BOARD) && defined(GIMBAL_BOARD)) ||  \

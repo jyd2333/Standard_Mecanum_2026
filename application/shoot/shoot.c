@@ -182,7 +182,7 @@ void ShootInit()
     Motor_Init_Config_s loader_config = {
         .can_init_config = {
             .can_handle = &hcan2,
-            .tx_id      = 1,
+            .tx_id      = 2,
         },
         .controller_param_init_config = {
             // .angle_PID = {

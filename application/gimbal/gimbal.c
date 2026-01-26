@@ -93,19 +93,19 @@ void GimbalInit()
             .angle_PID = {
                 .Kp            = 1,//1.7,//1.8,//0.6, // 0.24, // 0.31, // 0.45
                 .Ki            = 0,
-                .Kd            = 0,//0.13,//0.07,
+                .Kd            = 0.0f,//0.13,//0.07,
                 .DeadBand      = 0.0f,
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .IntegralLimit = 5,
-                .MaxOut = 1,
+                .MaxOut = 300,
             },
             .speed_PID = {
-                .Kp            = 9000, // 18000, // 10500,//1000,//10000,// 11000
-                .Ki            = 0,    // 0
+                .Kp            = 6000, // 18000, // 10500,//1000,//10000,// 11000
+                .Ki            = 10,    // 0
                 .Kd            = 0,    // 10, // 30
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_OutputFilter,
-                .IntegralLimit = 5000,
-                .MaxOut        = 3000,//16384,//25000, // 20000
+                .IntegralLimit = 500,
+                .MaxOut        = 7000,//16384,//25000, // 20000
                 // .Output_LPF_RC=1,//0.4,
                 // .CoefA=0.2,
                 // .CoefB=2,//0.3,
@@ -171,26 +171,27 @@ void GimbalInit()
         .motor_type = DM_Motor,
         .controller_param_init_config ={
             .angle_PID = {
-                .Kp = 110,
-                .Ki = 100,
-                .Kd = 0.01,
+                .Kp = 12,
+                .Ki = 0.03,
+                .Kd = 0.03,
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit ,
                 .IntegralLimit = 3,
-                .MaxOut = 30,
+                .MaxOut = 1,
             },
             .speed_PID = {
-                .Kp = 1,
-                .Ki = 1,
-                .Kd = 0,
+                .Kp = 1.75,
+                .Ki = 0.02,
+                .Kd = 0.02,
                 .DeadBand = 0,
-                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit ,
-                .IntegralLimit = 1,
+                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit,
+                .IntegralLimit = 0.25,
                 .MaxOut = 5,
             },
-             .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
+            //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
+             .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[0],  //等待修改   
             // ??????????????,????,ins_task.md??c??bodyframe?????
-            .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET],
+            .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[0],
             .current_feedforward_ptr = &pitch_tor_feedforward,
         },
         .controller_setting_init_config = {
@@ -298,6 +299,15 @@ static float YawFeedForwardCalculate(float direction)
     }
 }
 
+
+void pitch_limit(float angle)
+{
+    if(angle>PITCH_UP_LIMIT)
+        angle=PITCH_UP_LIMIT;
+    else if(angle<PITCH_DOWN_LIMIT)
+        angle=PITCH_DOWN_LIMIT;
+    pitch_motor->motor_controller.pid_ref = angle;
+}
 // static PIDInstance YAW_version_PID = {
 //     .Kp            = 1,   // 25,//25, // 50,//70, // 4.5
 //     .Ki            = 0,    // 0
@@ -375,8 +385,8 @@ void GimbalTask()
             break;
         // ?????????????,???????yaw?????offset??????????????????
         case GIMBAL_GYRO_MODE: // ?????????????        
-            // DJIMotorEnable(yaw_motor);
-            DJIMotorStop(yaw_motor);
+            DJIMotorEnable(yaw_motor);
+            // DJIMotorStop(yaw_motor);
             // DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP, OTHER_FEED);
             // DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
             if (gimbal_cmd_recv.nuc_mode == version_control)
@@ -439,12 +449,12 @@ void GimbalTask()
             if (gimbal_cmd_recv.nuc_mode == version_control)
             {
                 // DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch_version);
-                pitch_motor->motor_controller.pid_ref = gimbal_cmd_recv.pitch_version;
+                pitch_limit(gimbal_cmd_recv.pitch_version);
             }
             else
             {
                 // DJIMotorSetRef(pitch_motor,pitch_offset + gimbal_cmd_recv.pitch);
-                pitch_motor->motor_controller.pid_ref = gimbal_cmd_recv.pitch;
+                pitch_limit(gimbal_cmd_recv.pitch);
             }
             // DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_test);
             // DJIMotorSetRef(telescope_motor,telescope_test);
