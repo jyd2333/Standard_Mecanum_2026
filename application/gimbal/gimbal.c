@@ -91,21 +91,21 @@ void GimbalInit()
         },
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp            = 1,//1.7,//1.8,//0.6, // 0.24, // 0.31, // 0.45
+                .Kp            = 0.5,//1.7,//1.8,//0.6, // 0.24, // 0.31, // 0.45
                 .Ki            = 0,
                 .Kd            = 0.0f,//0.13,//0.07,
                 .DeadBand      = 0.0f,
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .IntegralLimit = 5,
-                .MaxOut = 300,
+                .MaxOut = 10,
             },
             .speed_PID = {
-                .Kp            = 6000, // 18000, // 10500,//1000,//10000,// 11000
-                .Ki            = 10,    // 0
+                .Kp            = 3000, // 18000, // 10500,//1000,//10000,// 11000
+                .Ki            = 0,    // 0
                 .Kd            = 0,    // 10, // 30
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_OutputFilter,
                 .IntegralLimit = 500,
-                .MaxOut        = 7000,//16384,//25000, // 20000
+                .MaxOut        = 15000,//16384,//25000, // 20000
                 // .Output_LPF_RC=1,//0.4,
                 // .CoefA=0.2,
                 // .CoefB=2,//0.3,
@@ -171,28 +171,28 @@ void GimbalInit()
         .motor_type = DM_Motor,
         .controller_param_init_config ={
             .angle_PID = {
-                .Kp = 12,
-                .Ki = 0.03,
-                .Kd = 0.03,
+                .Kp = 5,
+                .Ki = 0.0,
+                .Kd = 0.0,
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit ,
                 .IntegralLimit = 3,
-                .MaxOut = 1,
+                .MaxOut = 5,
             },
             .speed_PID = {
-                .Kp = 1.75,
-                .Ki = 0.02,
-                .Kd = 0.02,
+                .Kp = 1,
+                .Ki = 0.0,
+                .Kd = 0.0,
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit,
                 .IntegralLimit = 0.25,
-                .MaxOut = 5,
+                .MaxOut = 3,
             },
             //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
              .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[0],  //等待修改   
             // ??????????????,????,ins_task.md??c??bodyframe?????
-            .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[0],
-            .current_feedforward_ptr = &pitch_tor_feedforward,
+            .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[1],
+            // .current_feedforward_ptr = &pitch_tor_feedforward,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
@@ -201,7 +201,7 @@ void GimbalInit()
             .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
             .feedback_reverse_flag = FEEDBACK_DIRECTION_REVERSE,
-            .feedforward_flag      = CURRENT_FEEDFORWARD,
+            // .feedforward_flag      = CURRENT_FEEDFORWARD,
             .control_range = {
                 .P_max = 12.5,
                 .V_max = 30,

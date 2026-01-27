@@ -145,14 +145,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            .current_feedforward_ptr = &friction_lf_state,
+            // .current_feedforward_ptr = &friction_lf_state,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            .feedforward_flag       = CURRENT_FEEDFORWARD,
+            // .feedforward_flag       = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -167,14 +167,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            .current_feedforward_ptr = &friction_rf_state,
+            // .current_feedforward_ptr = &friction_rf_state,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            .feedforward_flag       = CURRENT_FEEDFORWARD,
+            // .feedforward_flag       = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -189,14 +189,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            .current_feedforward_ptr = &friction_rb_state,
+            // .current_feedforward_ptr = &friction_rb_state,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            .feedforward_flag       = CURRENT_FEEDFORWARD,
+            // .feedforward_flag       = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -211,14 +211,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            .current_feedforward_ptr = &friction_lb_state,
+            // .current_feedforward_ptr = &friction_lb_state,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            .feedforward_flag       = CURRENT_FEEDFORWARD,
+            // .feedforward_flag       = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -232,11 +232,11 @@ void ChassisInit()
     motor_rf                                                               = DJIMotorInit(&chassis_motor_config_2);
     
     chassis_motor_config_3.can_init_config.tx_id                             = 3;
-    chassis_motor_config_3.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
+    chassis_motor_config_3.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     motor_rb                                                               = DJIMotorInit(&chassis_motor_config_3);
 
     chassis_motor_config_4.can_init_config.tx_id                             = 4;
-    chassis_motor_config_4.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
+    chassis_motor_config_4.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     motor_lb                                                               = DJIMotorInit(&chassis_motor_config_4);
     
     Motor_Init_Config_s joint_motor_config = {
@@ -361,10 +361,10 @@ static void updateAllWheelsFriction(float velocity_cmd_lf, float velocity_cmd_rf
 }
 static void MecanumCalculate()
 {
-    vt_lf = -chassis_vx - chassis_vy + chassis_cmd_recv.wz * LF_CENTER;
-    vt_rf = -chassis_vx + chassis_vy - chassis_cmd_recv.wz * RF_CENTER;
-    vt_lb = -chassis_vx + chassis_vy + chassis_cmd_recv.wz * LB_CENTER;
-    vt_rb = -chassis_vx - chassis_vy - chassis_cmd_recv.wz * RB_CENTER;
+    vt_lf = chassis_vx + chassis_vy + chassis_cmd_recv.wz * LF_CENTER;
+    vt_rf = -chassis_vx + chassis_vy + chassis_cmd_recv.wz * RF_CENTER;
+    vt_lb = chassis_vx - chassis_vy + chassis_cmd_recv.wz * LB_CENTER;
+    vt_rb = -chassis_vx - chassis_vy + chassis_cmd_recv.wz * RB_CENTER;
 
     updateAllWheelsFriction(vt_lf, vt_rf, vt_lb, vt_rb);
 }
@@ -596,7 +596,7 @@ float length_l_measure,length_r_measure,length_measure;
 float length_target;
 float angle_test = 0.17;
 // float length_test = 0.2;
-float leg_p = 0.1;
+float leg_p = 0.3;
 
 
 /* 机器人底盘控制核心任务 */
@@ -678,7 +678,7 @@ void ChassisTask()
     switch (chassis_cmd_recv.chassis_mode) {
         case CHASSIS_NO_FOLLOW:     //一般不进入
             // 底盘不旋转,但维持全向机动,一般用于调整云台姿态
-            chassis_cmd_recv.wz = 0;
+            // chassis_cmd_recv.wz = 0;
             powerLim=0;
             cos_theta = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
@@ -789,7 +789,7 @@ void ChassisTask()
     length_l_measure = -0.05814 * angle_l * angle_l + 0.2072 *angle_l + 0.107;
     length_r_measure = -0.05814 * angle_r * angle_r + 0.2072 *angle_r + 0.107;
     length_measure = (length_l_measure + length_r_measure)/2;
-    length_target = length_measure - leg_p * (Chassis_IMU_data->output.INS_angle[0] - dipAngle);
+    length_target = length_measure - leg_p * (Chassis_IMU_data->output.INS_angle[1] - dipAngle);
     angle_target = (-0.2072 + __builtin_sqrtf(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);
     angle_l_target = angle_target + l_offset;
     angle_r_target = r_offset - angle_target;

@@ -41,8 +41,8 @@
 #define JOINT_LEFT_DOWN_LIMIT       -0.036f
 #define JOINT_RIGHT_UP_LIMIT        -2.37f
 #define JOINT_RIGHT_DOWN_LIMIT      -3.14f
-#define PITCH_DOWN_LIMIT            -0.45f
-#define PITCH_UP_LIMIT              0.45f
+#define PITCH_DOWN_LIMIT            -0.4f
+#define PITCH_UP_LIMIT              0.4f
 
 
 #define PITCH_FEED_TYPE     1 // 云台PITCH轴反馈值来源:编码器为0,陀螺仪为1
@@ -85,8 +85,8 @@
 // 设置陀螺仪数据相较于云台的yaw,pitch,roll的方向
 #define BMI088_BOARD_INSTALL_SPIN_MATRIX \
     {0.0f, -1.0f, 0.0f},                 \
-    {0.0f, 0.0f, -1.0f},              \
-    {1.0f, 0.0f, 0.0f}
+    {1.0f, 0.0f, 0.0f},              \
+    {0.0f, 0.0f, 1.0f}
 
 #define INS_YAW_ADDRESS_OFFSET   2 // 陀螺仪数据相较于云台的yaw的方向
 #define INS_PITCH_ADDRESS_OFFSET 1 // 陀螺仪数据相较于云台的pitch的方向
