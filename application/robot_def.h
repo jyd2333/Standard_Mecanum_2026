@@ -37,10 +37,10 @@
 #define PITCH_HORIZON_ECD           5225 // 云台处于水平位置时编码器值,若对云台有机械改动需要修改
 #define PITCH_POS_UP_LIMIT_ECD      6191 // 云台竖直方向高处限位编码器值,若对云台有机械改动需要修改
 #define PITCH_POS_DOWN_LIMIT_ECD    4830 // 云台竖直方向低处限位编码器值,若对云台有机械改动需要修改
-#define JOINT_LEFT_UP_LIMIT         0.73f
-#define JOINT_LEFT_DOWN_LIMIT       -0.036f
-#define JOINT_RIGHT_UP_LIMIT        -2.37f
-#define JOINT_RIGHT_DOWN_LIMIT      -3.14f
+#define JOINT_LEFT_UP_LIMIT         3.30f//2.80f
+#define JOINT_LEFT_DOWN_LIMIT       1.75f//1.95f
+#define JOINT_RIGHT_UP_LIMIT        0.0f//-0.23f
+#define JOINT_RIGHT_DOWN_LIMIT      -1.55f//-1.05f
 #define PITCH_DOWN_LIMIT            -0.4f
 #define PITCH_UP_LIMIT              0.4f
 

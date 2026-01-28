@@ -591,12 +591,22 @@ void joint_limit(float l_target, float r_target)
 float offset_angle_watch;
 float angle_l,angle_r;
 float angle_target, angle_l_target, angle_r_target;
-float l_offset = -0.3717212, r_offset = -2.062066;
+// float l_offset = -0.311236, r_offset = 0.0434394;
+float l_offset = 1.7437732, r_offset = -0.0351452;
 float length_l_measure,length_r_measure,length_measure;
 float length_target;
-float angle_test = 0.17;
+float angle_test = 0.07f;//0.17;
 // float length_test = 0.2;
 float leg_p = 0.3;
+
+float safe_sqrt(float x)
+{
+    if(x < 0.0f)
+    {
+        return 0.0f;
+    }
+    return __builtin_sqrtf(x);
+}
 
 
 /* 机器人底盘控制核心任务 */
@@ -678,7 +688,7 @@ void ChassisTask()
     switch (chassis_cmd_recv.chassis_mode) {
         case CHASSIS_NO_FOLLOW:     //一般不进入
             // 底盘不旋转,但维持全向机动,一般用于调整云台姿态
-            // chassis_cmd_recv.wz = 0;
+            chassis_cmd_recv.wz = 0;
             powerLim=0;
             cos_theta = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
@@ -754,30 +764,30 @@ void ChassisTask()
             dipAngle = 0;
             joint_l->ctrl.kp_set = 150;
             joint_l->ctrl.kd_set = 2;
-            joint_l->ctrl.tor_set = 4;
+            joint_l->ctrl.tor_set = 7;
             joint_r->ctrl.kp_set = 150;
             joint_r->ctrl.kd_set = 2;
-            joint_r->ctrl.tor_set = -4;
+            joint_r->ctrl.tor_set = -7;
             Chassis_Follow_PID.Kp = 105;
             break;
         case LEG_CLIMB:
             dipAngle = 0.1;
             joint_l->ctrl.kp_set = 150;
             joint_l->ctrl.kd_set = 2;
-            joint_l->ctrl.tor_set = 4;
+            joint_l->ctrl.tor_set = 7;
             joint_r->ctrl.kp_set = 150;
             joint_r->ctrl.kd_set = 2;
-            joint_r->ctrl.tor_set = -4;
+            joint_r->ctrl.tor_set = -7;
             Chassis_Follow_PID.Kp = 105;
             break;
         case LEG_CLIMB_RETRACT:
             dipAngle = 0;
-            joint_l->ctrl.kp_set = 150;
-            joint_l->ctrl.kd_set = 2;
-            joint_l->ctrl.tor_set = -4;
-            joint_r->ctrl.kp_set = 150;
-            joint_r->ctrl.kd_set = 2;
-            joint_r->ctrl.tor_set = 4;
+            joint_l->ctrl.kp_set = 50;
+            joint_l->ctrl.kd_set = 4;
+            joint_l->ctrl.tor_set = -6;
+            joint_r->ctrl.kp_set = 50;
+            joint_r->ctrl.kd_set = 4;
+            joint_r->ctrl.tor_set = 6;
             Chassis_Follow_PID.Kp = 50;
             break;
         default:
@@ -790,7 +800,7 @@ void ChassisTask()
     length_r_measure = -0.05814 * angle_r * angle_r + 0.2072 *angle_r + 0.107;
     length_measure = (length_l_measure + length_r_measure)/2;
     length_target = length_measure - leg_p * (Chassis_IMU_data->output.INS_angle[1] - dipAngle);
-    angle_target = (-0.2072 + __builtin_sqrtf(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);
+    angle_target = (-0.2072 + safe_sqrt(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);
     angle_l_target = angle_target + l_offset;
     angle_r_target = r_offset - angle_target;
     if(leg_mode == LEG_CLIMB_RETRACT)
@@ -818,8 +828,8 @@ void ChassisTask()
     // 推送反馈消息
     memcpy(&chassis_feedback_data.CapFlag_open_from_real, &cap->cap_msg_s.SuperCap_open_flag_from_real, sizeof(uint8_t));
     memcpy(&chassis_feedback_data.cap_voltage, &cap->cap_msg_s.CapVot, sizeof(float));
-   memcpy(&chassis_feedback_data.chassis_power_output, &Power_Output, sizeof(float));
-   memcpy(&chassis_feedback_data.chassis_voltage, &cap->cap_msg_s.chassis_voltage_from_cap, sizeof(float));
+    memcpy(&chassis_feedback_data.chassis_power_output, &Power_Output, sizeof(float));
+    memcpy(&chassis_feedback_data.chassis_voltage, &cap->cap_msg_s.chassis_voltage_from_cap, sizeof(float));
    
 #ifdef ONE_BOARD
     PubPushMessage(chassis_pub, (void *)&chassis_feedback_data);
