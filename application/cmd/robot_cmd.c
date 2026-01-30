@@ -815,7 +815,7 @@ static void RemoteControlSet()
     // 底盘参数
     chassis_cmd_send.vx = 70.0f * (float)rc_data[TEMP].rc.rocker_r1; // 水平方向
     chassis_cmd_send.vy = 70.0f * (float)rc_data[TEMP].rc.rocker_r_; // 竖直方向
-    chassis_cmd_send.wz = 7.0f * (float)rc_data[TEMP].rc.rocker_l_;
+    // chassis_cmd_send.wz = 7.0f * (float)rc_data[TEMP].rc.rocker_l_;
 //     // // 云台参数
 //     // 云台软件限位
 
@@ -1422,7 +1422,7 @@ DeterminRobotID();
     chassis_cmd_send_uart.gimbal_mode=gimbal_cmd_send.gimbal_mode;
     chassis_cmd_send_uart.yaw_control=gimbal_cmd_send.yaw;
     chassis_cmd_send_uart.yaw_angle=gimbal_fetch_data.gimbal_imu_data->output.INS_angle_deg[INS_YAW_ADDRESS_OFFSET];
-    chassis_cmd_send_uart.yaw_gyro=gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET];
+    chassis_cmd_send_uart.yaw_gyro= -gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET];
     chassis_cmd_send_uart.nuc_yaw=gimbal_cmd_send.yaw_version;
     chassis_cmd_send_uart.shoot_mode=shoot_cmd_send.shoot_mode;
     chassis_cmd_send_uart.load_mode=shoot_cmd_send.load_mode;

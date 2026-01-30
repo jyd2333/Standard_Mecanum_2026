@@ -663,10 +663,12 @@ void ChassisTask()
     // offset_angle_watch = offset_angle;
 
     if(chassis_cmd_recv.chassis_mode == CHASSIS_CLIMB || chassis_cmd_recv.chassis_mode == CHASSIS_CLIMB_RETRACT)
-        offset_angle =(chassis_cmd_recv.offset_angle >= 0 ? chassis_cmd_recv.offset_angle - 180 : chassis_cmd_recv.offset_angle + 180);
+        // offset_angle =(chassis_cmd_recv.offset_angle >= 0 ? chassis_cmd_recv.offset_angle - 180 : chassis_cmd_recv.offset_angle + 180);
+        offset_angle = 0;
     else
-        offset_angle =chassis_cmd_recv.offset_angle;
-    
+        // offset_angle =chassis_cmd_recv.offset_angle;
+        offset_angle = 0;
+    chassis_cmd_recv.offset_angle = 0;
     // if(rc_ctrl[0].rc.switch_left == RC_SW_UP)
     // {
     //     joint_l->ctrl.tor_set = -4;
@@ -697,7 +699,8 @@ void ChassisTask()
             break;
         case CHASSIS_FOLLOW_GIMBAL_YAW: // 跟随云台
             powerLim=0;            
-            chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
+            // chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
+            chassis_cmd_recv.wz = 0;
             cos_theta = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode  = LEG_ACTIVE_SUSPENSION;
@@ -741,14 +744,16 @@ void ChassisTask()
             leg_mode            = LEG_ACTIVE_SUSPENSION;
             break;
         case CHASSIS_CLIMB:
-            chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
+            // chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
+            chassis_cmd_recv.wz = 0;
             cos_theta           = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta           = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode            = LEG_CLIMB;
             ramp_init(&rotate_ramp, 250);
             break;
         case CHASSIS_CLIMB_RETRACT:
-            chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
+            // chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
+            chassis_cmd_recv.wz = 0;
             cos_theta           = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta           = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode            = LEG_CLIMB_RETRACT;
