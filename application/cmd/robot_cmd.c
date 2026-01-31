@@ -720,13 +720,15 @@ static void RemoteControlSet()
 
     if (rc_update_flag == 1)
     {
-        if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
-        {
-            if (gimbal_cmd_send.nuc_mode != version_control)
-                gimbal_cmd_send.nuc_mode = version_control;
-            else
-                gimbal_cmd_send.nuc_mode = none_version_control;
-        }
+        // if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
+        // {
+        //     if (gimbal_cmd_send.nuc_mode != version_control)
+        //         gimbal_cmd_send.nuc_mode = version_control;
+        //     else
+        //         gimbal_cmd_send.nuc_mode = none_version_control;
+        // }
+        gimbal_cmd_send.nuc_mode = none_version_control;
+        
         switch (rc_data[TEMP].rc.switch_left)
         {
             case RC_SW_UP:
@@ -777,6 +779,8 @@ static void RemoteControlSet()
                             chassis_cmd_send.chassis_mode = CHASSIS_CLIMB;
                             break;
                         case CHASSIS_CLIMB:
+                        case CHASSIS_CLIMB_WITH_PULL:
+                        case CHASSIS_CLIMB_WITH_PUSH:
                             chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_RETRACT;
                             break;
                         case CHASSIS_CLIMB_RETRACT:
@@ -804,7 +808,21 @@ static void RemoteControlSet()
             default:
                 break;
         }
-        
+        if (rc_data[TEMP].rc.dial > 250)
+        {
+            if(chassis_cmd_send.chassis_mode == CHASSIS_CLIMB || chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PULL)
+                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PUSH;
+        }
+        if (rc_data[TEMP].rc.dial < -250)
+        {
+            if(chassis_cmd_send.chassis_mode == CHASSIS_CLIMB || chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PUSH)
+                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PULL;
+        }
+        if(rc_data[TEMP].rc.dial >= -250 && rc_data[TEMP].rc.dial <= 250)
+        {
+            if(chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PULL || chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PUSH)
+                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB;
+        }
         rc_update_flag = 0;
     }
     

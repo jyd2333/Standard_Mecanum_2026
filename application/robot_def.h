@@ -130,6 +130,8 @@ typedef enum {
     CHASSIS_REVERSE_ROTATE,    // 反方向小陀螺
     CHASSIS_CLIMB,             // 上台阶
     CHASSIS_CLIMB_RETRACT,     // 收腿
+    CHASSIS_CLIMB_WITH_PUSH,   //上台阶模式下伸推杆
+    CHASSIS_CLIMB_WITH_PULL,   //上台阶模式下收推杆
 } chassis_mode_e;
 
 typedef enum {

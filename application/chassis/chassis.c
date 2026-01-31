@@ -90,6 +90,7 @@ static float kl=1;
 extern INS_Instance *INS;
 int8_t sign_lf, sign_rf, sign_lb, sign_rb;
 static leg_mode_e leg_mode = LEG_ACTIVE_SUSPENSION;
+GPIO_InitTypeDef GPIO_InitStruct = {0};
 
 static float friction_lf_state = 0.0f;
 static float friction_rf_state = 0.0f;
@@ -266,6 +267,15 @@ void ChassisInit()
             // .rx_id      = 0x300, // 超级电容默认发送id,注意tx和rx在其他人看来是反的
         }};
     cap = SuperCapInit(&cap_conf); // 超级电容初始化
+
+    GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_9|GPIO_PIN_11;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
     #endif
 
 
@@ -644,6 +654,10 @@ void ChassisTask()
         DJIMotorStop(motor_rb);
         DMMotorStop(joint_l);
         DMMotorStop(joint_r);
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+        HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
+
     } else { // 正常工作
         DJIMotorEnable(motor_lf);
         DJIMotorEnable(motor_rf);
@@ -744,12 +758,37 @@ void ChassisTask()
             leg_mode            = LEG_ACTIVE_SUSPENSION;
             break;
         case CHASSIS_CLIMB:
+        case CHASSIS_CLIMB_WITH_PULL:
+        case CHASSIS_CLIMB_WITH_PUSH:
             // chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
             chassis_cmd_recv.wz = 0;
             cos_theta           = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta           = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode            = LEG_CLIMB;
             ramp_init(&rotate_ramp, 250);
+            switch(chassis_cmd_recv.chassis_mode)
+            {
+                case CHASSIS_CLIMB:
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
+                    break;
+                case CHASSIS_CLIMB_WITH_PULL:
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_RESET);
+                    break;
+                case CHASSIS_CLIMB_WITH_PUSH:
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_RESET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
+                    break;
+                default:
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_SET);
+                    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
+                    break;
+            }
             break;
         case CHASSIS_CLIMB_RETRACT:
             // chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
