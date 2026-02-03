@@ -91,6 +91,7 @@ extern INS_Instance *INS;
 int8_t sign_lf, sign_rf, sign_lb, sign_rb;
 static leg_mode_e leg_mode = LEG_ACTIVE_SUSPENSION;
 GPIO_InitTypeDef GPIO_InitStruct = {0};
+volatile static float joint_tor_feedforward = 0;
 
 static float friction_lf_state = 0.0f;
 static float friction_rf_state = 0.0f;
@@ -243,7 +244,38 @@ void ChassisInit()
     Motor_Init_Config_s joint_motor_config = {
         .can_init_config.can_handle = &hcan2,
         .motor_type = DM_Motor,
+        .controller_param_init_config ={
+            .angle_PID = {
+                .Kp = 10,
+                .Ki = 0.0,
+                .Kd = 0.0,
+                .DeadBand = 0,
+                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit ,
+                .IntegralLimit = 0.5,
+                .MaxOut = 5,
+            },
+            .speed_PID = {
+                .Kp = 20,
+                .Ki = 0,
+                .Kd = 0.0,
+                .DeadBand = 0,
+                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit,
+                .IntegralLimit = 0.5,
+                .MaxOut = 10,
+            },
+            //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
+             .other_angle_feedback_ptr = &Chassis_IMU_data->output.INS_angle[1],  //等待修改   
+            // ??????????????,????,ins_task.md??c??bodyframe?????
+            .other_speed_feedback_ptr = &Chassis_IMU_data->INS_data.INS_gyro[0],
+            .current_feedforward_ptr = &joint_tor_feedforward,
+        },
         .controller_setting_init_config = {
+            .angle_feedback_source = OTHER_FEED,
+            .speed_feedback_source = OTHER_FEED,
+            .outer_loop_type       = ANGLE_LOOP,
+            .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
+            .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
+            .feedforward_flag      = CURRENT_FEEDFORWARD,
             .control_range = {
                 .P_max = 12.5,
                 .V_max = 10,
@@ -254,11 +286,13 @@ void ChassisInit()
     
     joint_motor_config.can_init_config.tx_id = 0x01;
     joint_motor_config.can_init_config.rx_id = 0x11;
-    joint_l = DMMotorInit(&joint_motor_config);
+    joint_motor_config.controller_setting_init_config.feedback_reverse_flag = FEEDBACK_DIRECTION_NORMAL;
+    // joint_l = DMMotorInit(&joint_motor_config);
     
     joint_motor_config.can_init_config.tx_id = 0x02;
     joint_motor_config.can_init_config.rx_id = 0x12;
-    joint_r = DMMotorInit(&joint_motor_config);
+    joint_motor_config.controller_setting_init_config.feedback_reverse_flag = FEEDBACK_DIRECTION_REVERSE;
+    // joint_r = DMMotorInit(&joint_motor_config);
     
     SuperCap_Init_Config_s cap_conf = {
         .can_config = {
@@ -600,7 +634,11 @@ void joint_limit(float l_target, float r_target)
 
 float offset_angle_watch;
 float angle_l,angle_r;
+volatile static float angle_avg;//, tor_avg;
+// float angle_measure_all[50];//,tor_measure_all[10];
+// float angle_measure_sum;//, tor_measure_sum;
 float angle_target, angle_l_target, angle_r_target;
+int16_t avg_count = 0, avg_i;
 // float l_offset = -0.311236, r_offset = 0.0434394;
 float l_offset = 1.7437732, r_offset = -0.0351452;
 float length_l_measure,length_r_measure,length_measure;
@@ -683,22 +721,6 @@ void ChassisTask()
         // offset_angle =chassis_cmd_recv.offset_angle;
         offset_angle = 0;
     chassis_cmd_recv.offset_angle = 0;
-    // if(rc_ctrl[0].rc.switch_left == RC_SW_UP)
-    // {
-    //     joint_l->ctrl.tor_set = -4;
-    //     joint_l->ctrl.pos_set = l_offset + angle_test;
-    //     joint_r->ctrl.tor_set = 4;
-    //     joint_r->ctrl.pos_set = r_offset - angle_test;
-    //     Chassis_Follow_PID.Kp = 50;
-    // }
-    // else
-    // {
-    //     joint_l->ctrl.tor_set = 4;
-    //     joint_l->ctrl.pos_set = angle_l_target;
-    //     joint_r->ctrl.tor_set = -4;
-    //     joint_r->ctrl.pos_set = angle_r_target;
-    //     Chassis_Follow_PID.Kp = 105;
-    // }
 
     // 根据控制模式设定旋转速度
     switch (chassis_cmd_recv.chassis_mode) {
@@ -806,40 +828,63 @@ void ChassisTask()
     {
         case LEG_ACTIVE_SUSPENSION:
             dipAngle = 0;
-            joint_l->ctrl.kp_set = 150;
-            joint_l->ctrl.kd_set = 2;
-            joint_l->ctrl.tor_set = 7;
-            joint_r->ctrl.kp_set = 150;
-            joint_r->ctrl.kd_set = 2;
-            joint_r->ctrl.tor_set = -7;
+            // joint_l->ctrl.kp_set = 150;
+            // joint_l->ctrl.kd_set = 2;
+            // joint_l->ctrl.tor_set = 7;
+            // joint_r->ctrl.kp_set = 150;
+            // joint_r->ctrl.kd_set = 2;
+            // joint_r->ctrl.tor_set = -7;
             Chassis_Follow_PID.Kp = 105;
             break;
         case LEG_CLIMB:
             dipAngle = 0.1;
-            joint_l->ctrl.kp_set = 150;
-            joint_l->ctrl.kd_set = 2;
-            joint_l->ctrl.tor_set = 7;
-            joint_r->ctrl.kp_set = 150;
-            joint_r->ctrl.kd_set = 2;
-            joint_r->ctrl.tor_set = -7;
+            // joint_l->ctrl.kp_set = 150;
+            // joint_l->ctrl.kd_set = 2;
+            // joint_l->ctrl.tor_set = 7;
+            // joint_r->ctrl.kp_set = 150;
+            // joint_r->ctrl.kd_set = 2;
+            // joint_r->ctrl.tor_set = -7;
             Chassis_Follow_PID.Kp = 105;
             break;
         case LEG_CLIMB_RETRACT:
             dipAngle = 0;
-            joint_l->ctrl.kp_set = 50;
-            joint_l->ctrl.kd_set = 4;
-            joint_l->ctrl.tor_set = -6;
-            joint_r->ctrl.kp_set = 50;
-            joint_r->ctrl.kd_set = 4;
-            joint_r->ctrl.tor_set = 6;
+            // joint_l->ctrl.kp_set = 50;
+            // joint_l->ctrl.kd_set = 4;
+            // joint_l->ctrl.tor_set = -6;
+            // joint_r->ctrl.kp_set = 50;
+            // joint_r->ctrl.kd_set = 4;
+            // joint_r->ctrl.tor_set = 6;
             Chassis_Follow_PID.Kp = 50;
             break;
         default:
             break;
     }
 
+
     angle_l = joint_l->measure.pos - l_offset;
     angle_r = -joint_r->measure.pos + r_offset;
+    angle_avg = (angle_l + angle_r) / 2;
+    // tor_avg = (joint_l->measure.tor - joint_r->measure.tor) / 2;
+    // angle_measure_all[avg_count] = (angle_l + angle_r) / 2;
+    // tor_measure_all[avg_count] = (joint_l->measure.tor - joint_r->measure.tor) / 2;
+    // avg_count++;
+    // if(avg_count >= 10)
+    // {
+    //     angle_measure_sum = 0;
+    //     // tor_measure_sum = 0;
+    //     for(avg_i = 0; avg_i < avg_count; avg_i++)
+    //     {
+    //         angle_measure_sum += angle_measure_all[avg_i];
+    //         // tor_measure_sum += tor_measure_all[avg_i];
+    //     }
+    //     angle_avg = angle_measure_sum / avg_count;
+    //     // tor_avg = tor_measure_sum / avg_count;
+    //     avg_count = 0;
+    // }
+    joint_tor_feedforward = - 25.9625 * angle_avg * angle_avg * angle_avg
+                            + 62.3065 * angle_avg * angle_avg
+                            - 51.3808 * angle_avg
+                            + 18.8648;
     length_l_measure = -0.05814 * angle_l * angle_l + 0.2072 *angle_l + 0.107;
     length_r_measure = -0.05814 * angle_r * angle_r + 0.2072 *angle_r + 0.107;
     length_measure = (length_l_measure + length_r_measure)/2;
@@ -847,10 +892,12 @@ void ChassisTask()
     angle_target = (-0.2072 + safe_sqrt(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);
     angle_l_target = angle_target + l_offset;
     angle_r_target = r_offset - angle_target;
-    if(leg_mode == LEG_CLIMB_RETRACT)
-        joint_limit(l_offset + angle_test, r_offset - angle_test);
-    else
-        joint_limit(angle_l_target, angle_r_target);
+    // if(leg_mode == LEG_CLIMB_RETRACT)
+    //     joint_limit(l_offset + angle_test, r_offset - angle_test);
+    // else
+    //     joint_limit(angle_l_target, angle_r_target);
+    joint_l->motor_controller.pid_ref = dipAngle;
+    joint_r->motor_controller.pid_ref = dipAngle;
     // 根据云台和底盘的角度offset将控制量映射到底盘坐标系上
     // 底盘逆时针旋转为角度正方向;云台命令的方向以云台指向的方向为x,采用右手系(x指向正北时y在正东)
     chassis_vx = chassis_cmd_recv.vx * cos_theta - chassis_cmd_recv.vy * sin_theta;

@@ -720,14 +720,14 @@ static void RemoteControlSet()
 
     if (rc_update_flag == 1)
     {
-        // if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
-        // {
-        //     if (gimbal_cmd_send.nuc_mode != version_control)
-        //         gimbal_cmd_send.nuc_mode = version_control;
-        //     else
-        //         gimbal_cmd_send.nuc_mode = none_version_control;
-        // }
-        gimbal_cmd_send.nuc_mode = none_version_control;
+        if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
+        {
+            if (gimbal_cmd_send.nuc_mode != version_control)
+                gimbal_cmd_send.nuc_mode = version_control;
+            else
+                gimbal_cmd_send.nuc_mode = none_version_control;
+        }
+        // gimbal_cmd_send.nuc_mode = none_version_control;
         
         switch (rc_data[TEMP].rc.switch_left)
         {
@@ -1393,7 +1393,7 @@ DeterminRobotID();
 // DeterminRobotID();
 //Judge_Uart();
        //视觉
-   if(FIFO_Read(&NUC_fifo,fifo_pack,NUC_RECV_SIZE,0XFF,0XFE))USB_Version_devode();
+   if(FIFO_Read(&NUC_fifo,fifo_pack,NUC_RECV_SIZE,0XFF,0X0D))USB_Version_devode();
     // *nuc_can_rx=*(uint8_t*)CANCommGet(cmd_can_comm);
     //chassis_fetch_data = *(Chassis_Upload_Data_s *)CANCommGet(cmd_can_comm);
     if(FIFO_Read_chassis_ctrl(&rs485_master_fifo,chasssis_update_data,Chassis_Upload_Data_s_uart_size+3,0xff,0xfd)){
@@ -1457,18 +1457,22 @@ DeterminRobotID();
     // chassis_cmd_send_uart.yaw_speedKp=yaw_pid[2];
     chassis_ctrl_485(chassis_cmd_send_uart);//给底盘发送消息
 
+    static float yaw_reverse;
 
     PubPushMessage(gimbal_cmd_pub, (void *)&gimbal_cmd_send); 
 
     //向上位机发送消息
     vision_send_data[0]=0xff; 
     vision_send_data[1] = chassis_fetch_data_uart.color;
+
     float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[1], vision_send_data + 4);//低位先行
-    float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[2], vision_send_data + 8);
+    yaw_reverse =  gimbal_fetch_data.gimbal_imu_data->output.INS_angle[2];
+    float_to_uint8_manual(yaw_reverse, vision_send_data + 8);
+    
     static uint8_t nuc_cnt = 25;
     nuc_cnt = (nuc_cnt + 1) % 25 + 25;
     vision_send_data[30]=nuc_cnt;
-    vision_send_data[31]=0xfe;
+    vision_send_data[31]=0x0D;
     HostSend(host_instance, vision_send_data, 32);
 
 #endif

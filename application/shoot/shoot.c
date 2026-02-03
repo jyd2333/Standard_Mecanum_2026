@@ -27,7 +27,7 @@ int32_t shoot_count;                     // 已发弹量
 #define BUTTON_PRESSED    GPIO_PIN_RESET // 按键按下时引脚电平，通常为低电平
 #define BUTTON_RELEASED   GPIO_PIN_SET   // 按键释放时引脚电平，通常为高电平
 int load_speed           = 15000;
-float shoot_speed_target = 30000, shoot2_speed_target = 30000, limit_speed_target = 400;
+float shoot_speed_target = 40000, shoot2_speed_target = 40000, limit_speed_target = 400;
 // 定义按键状态
 typedef enum {
     BUTTON_STATE_IDLE,     // 按键未按下状态
@@ -104,7 +104,7 @@ void Button_Debounce(void)
 }
 float friction_feedforwardl = 100, friction_feedforwardr2 = -100;
 
-DMMotorInstance *loader;
+DJIMotorInstance *loader;
 
 static float loader_offset_angle = 25;
 static float current_angle;
@@ -181,8 +181,8 @@ void ShootInit()
     // 拨盘电机
     Motor_Init_Config_s loader_config = {
         .can_init_config = {
-            .can_handle = &hcan1,
-            .tx_id      = 6,
+            .can_handle = &hcan2,
+            .tx_id      = 1,
         },
         .controller_param_init_config = {
             // .angle_PID = {
@@ -198,7 +198,7 @@ void ShootInit()
                 .Kd            = 0,
                 .Improve       = PID_Integral_Limit,
                 .IntegralLimit = 5000,
-                .MaxOut        = 16000,
+                .MaxOut        = 10000,
             },
 
         },
@@ -212,7 +212,7 @@ void ShootInit()
         .motor_type = M2006 // 英雄使用m3508
     };
 
-    // loader = DJIMotorInit(&loader_config);
+    loader = DJIMotorInit(&loader_config);
 
     DJIMotorStop(loader);
 
@@ -392,9 +392,9 @@ void ShootTask()
         // DJIMotorStop(limit);
 #endif
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
-        // DJIMotorStop(loader);
+        DJIMotorStop(loader);
         // DM_enable_flag = 0;
-        DMMotorStop(loader);
+        // DMMotorStop(loader);
 #endif
     } else // 恢复运行
     {
@@ -409,15 +409,15 @@ void ShootTask()
 // DJIMotorStop(friction_r);
 #endif
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
-        // DJIMotorEnable(loader);
+        DJIMotorEnable(loader);
         // DM_enable_flag = 1;
-        DMMotorEnable1(loader);
-        if(loader->measure.state == 0)
-        {
-            loader->ctrl.pos_set = loader->measure.pos;
-            DMMotorEnableMode(loader);
-            CANTransmit(loader->motor_can_instance, 0.2);
-        }
+        // DMMotorEnable1(loader);
+        // if(loader->measure.state == 0)
+        // {
+        //     loader->ctrl.pos_set = loader->measure.pos;
+        //     DMMotorEnableMode(loader);
+        //     CANTransmit(loader->motor_can_instance, 0.2);
+        // }
 #endif
     }
     // 调试内容；模拟单发
@@ -451,7 +451,7 @@ void ShootTask()
 #endif
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             // DJIMotorOuterLoop(loader, SPEED_LOOP); // 切换到速度环
-            // DJIMotorSetRef(loader, 0);             // 同时设定参考值为0,这样停止的速度最快
+            DJIMotorSetRef(loader, 0);             // 同时设定参考值为0,这样停止的速度最快
             shoot_heat_count[0] = shoot_cmd_recv.shoot_count;
             // DM_enable_flag=0;
 #endif
@@ -487,7 +487,7 @@ void ShootTask()
             }
             switch (one_bullet) {
                 case 1:
-                    DJIMotorSetRef(loader, 0);
+                    DJIMotorSetRef(loader, 5000);
                     break;
                 case 0:
                     DJIMotorSetRef(loader, 5000);
@@ -545,7 +545,7 @@ void ShootTask()
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             if (shoot_cmd_recv.friction_mode == FRICTION_OFF) break;
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
-            DJIMotorSetRef(loader, -shoot_cmd_recv.shoot_rate * 360 * REDUCTION_RATIO_LOADER / 8);
+            DJIMotorSetRef(loader, shoot_cmd_recv.shoot_rate * 360 * REDUCTION_RATIO_LOADER / 8);
             // x颗/秒换算成速度: 已知一圈的载弹量,由此计算出1s需要转的角度,注意换算角速度(DJIMotor的速度单位是angle per second)
 #endif
             break;
@@ -553,7 +553,7 @@ void ShootTask()
         case LOAD_REVERSE:
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
-            DJIMotorSetRef(loader, 30000);
+            DJIMotorSetRef(loader, -20000);
             
 // x颗/秒换算成速度: 已知一圈的载弹量,由此计算出1s需要转的角度,注意换算角速度(DJIMotor的速度单位是angle per second)
 #endif
