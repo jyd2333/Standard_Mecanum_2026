@@ -754,11 +754,10 @@ static void RemoteControlSet()
                 else
                 {
                     if (fire_advice == 1)
-                    {
                         shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
-                    }
+                    else
+                        shoot_cmd_send.load_mode = LOAD_STOP;
                 }
-                
                 break;
             case RC_SW_MID:
                 if (rc_data[LAST].rc.switch_left == RC_SW_DOWN)

@@ -173,7 +173,7 @@ void GimbalInit()
         .controller_param_init_config ={
             .angle_PID = {
                 .Kp = 8,
-                .Ki = 0.0,
+                .Ki = 0.5,
                 .Kd = 0.01,
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit ,
@@ -182,11 +182,11 @@ void GimbalInit()
             },
             .speed_PID = {
                 .Kp = 2,
-                .Ki = 0.5,
+                .Ki = 0.7,
                 .Kd = 0.0,
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit,
-                .IntegralLimit = 0.5,
+                .IntegralLimit = 0.7,
                 .MaxOut = 3,
             },
             //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????

@@ -194,7 +194,7 @@ void ShootInit()
             // },
             .speed_PID = {
                 .Kp            = 2, // 10
-                .Ki            = 1, // 1
+                .Ki            = 0, // 1
                 .Kd            = 0,
                 .Improve       = PID_Integral_Limit,
                 .IntegralLimit = 5000,
@@ -440,6 +440,7 @@ void ShootTask()
     //    if(!load_mode_private)shoot_cmd_recv.load_mode = LOAD_STOP;
     //    load_mode_private=shoot_cmd_recv.load_mode;
     // 若不在休眠状态,根据robotCMD传来的控制模式进行拨盘电机参考值设定和模式切换
+    shoot_cmd_recv.shoot_rate = 16;
     switch (shoot_cmd_recv.load_mode) {
         // 停止拨盘
         case LOAD_STOP:
