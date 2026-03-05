@@ -432,12 +432,14 @@ void GimbalTask()
     #endif
     #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     #ifndef pitch_motor->motor_controller.angle_PID.IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit;
-    pitch_tor_feedforward = 0.584 * tan(0.82 - abs(gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET]));
+    pitch_tor_feedforward = 0.42146 * cos(1.43 + gimbal_IMU_data->output.INS_angle[0]);
     pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
     switch (gimbal_cmd_recv.gimbal_mode) {
         // ??
         case GIMBAL_ZERO_FORCE:
             DMMotorStop(pitch_motor);
+            pitch_motor->motor_controller.speed_PID.Iout = 0;
+            pitch_motor->motor_controller.angle_PID.Iout = 0;
             break;
         // ?????????????,???????yaw?????offset??????????????????
         case GIMBAL_GYRO_MODE: // ?????????????

@@ -1464,7 +1464,7 @@ DeterminRobotID();
     vision_send_data[0]=0xff; 
     vision_send_data[1] = chassis_fetch_data_uart.color;
 
-    float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[1], vision_send_data + 4);//低位先行
+    float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 4);//低位先行
     yaw_reverse =  gimbal_fetch_data.gimbal_imu_data->output.INS_angle[2];
     float_to_uint8_manual(yaw_reverse, vision_send_data + 8);
     

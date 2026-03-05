@@ -80,6 +80,16 @@ static PIDInstance Chassis_Follow_PID = {
 
 };
 
+static PIDInstance Leg_Diff_PID = {
+    .Kp            = 200,   // 25,//25, // 50,//70, // 4.5
+    .Ki            = 0,    // 0
+    .Kd            = 0, // 0.0,  // 0.07,  // 0
+    .DeadBand      = 0.01,  //跟随模式设置了死区，防止抖动
+    .IntegralLimit = 1,
+    .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
+    .MaxOut        = 10,
+};
+
 /* 用于自旋变速策略的时间变量 */
 // static float t;
 
@@ -91,7 +101,8 @@ extern INS_Instance *INS;
 int8_t sign_lf, sign_rf, sign_lb, sign_rb;
 static leg_mode_e leg_mode = LEG_ACTIVE_SUSPENSION;
 GPIO_InitTypeDef GPIO_InitStruct = {0};
-volatile static float joint_tor_feedforward = 0;
+volatile static float joint_l_tor_feedforward = 0, joint_r_tor_feedforward = 0;
+float length_diff,length_diff_tor;
 
 static float friction_lf_state = 0.0f;
 static float friction_rf_state = 0.0f;
@@ -267,7 +278,7 @@ void ChassisInit()
              .other_angle_feedback_ptr = &Chassis_IMU_data->output.INS_angle[1],  //等待修改   
             // ??????????????,????,ins_task.md??c??bodyframe?????
             .other_speed_feedback_ptr = &Chassis_IMU_data->INS_data.INS_gyro[0],
-            .current_feedforward_ptr = &joint_tor_feedforward,
+            // .current_feedforward_ptr = &joint_tor_feedforward,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
@@ -287,12 +298,14 @@ void ChassisInit()
     joint_motor_config.can_init_config.tx_id = 0x01;
     joint_motor_config.can_init_config.rx_id = 0x11;
     joint_motor_config.controller_setting_init_config.feedback_reverse_flag = FEEDBACK_DIRECTION_NORMAL;
-    // joint_l = DMMotorInit(&joint_motor_config);
+    joint_motor_config.controller_param_init_config.current_feedforward_ptr = &joint_l_tor_feedforward;
+    joint_l = DMMotorInit(&joint_motor_config);
     
     joint_motor_config.can_init_config.tx_id = 0x02;
     joint_motor_config.can_init_config.rx_id = 0x12;
     joint_motor_config.controller_setting_init_config.feedback_reverse_flag = FEEDBACK_DIRECTION_REVERSE;
-    // joint_r = DMMotorInit(&joint_motor_config);
+    joint_motor_config.controller_param_init_config.current_feedforward_ptr = &joint_r_tor_feedforward;
+    joint_r = DMMotorInit(&joint_motor_config);
     
     SuperCap_Init_Config_s cap_conf = {
         .can_config = {
@@ -640,7 +653,7 @@ volatile static float angle_avg;//, tor_avg;
 float angle_target, angle_l_target, angle_r_target;
 int16_t avg_count = 0, avg_i;
 // float l_offset = -0.311236, r_offset = 0.0434394;
-float l_offset = 1.7437732, r_offset = -0.0351452;
+float l_offset = 0.7959, r_offset = 2.1663;
 float length_l_measure,length_r_measure,length_measure;
 float length_target;
 float angle_test = 0.07f;//0.17;
@@ -881,10 +894,6 @@ void ChassisTask()
     //     // tor_avg = tor_measure_sum / avg_count;
     //     avg_count = 0;
     // }
-    joint_tor_feedforward = - 25.9625 * angle_avg * angle_avg * angle_avg
-                            + 62.3065 * angle_avg * angle_avg
-                            - 51.3808 * angle_avg
-                            + 18.8648;
     length_l_measure = -0.05814 * angle_l * angle_l + 0.2072 *angle_l + 0.107;
     length_r_measure = -0.05814 * angle_r * angle_r + 0.2072 *angle_r + 0.107;
     length_measure = (length_l_measure + length_r_measure)/2;
@@ -892,6 +901,18 @@ void ChassisTask()
     angle_target = (-0.2072 + safe_sqrt(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);
     angle_l_target = angle_target + l_offset;
     angle_r_target = r_offset - angle_target;
+
+    length_diff = length_l_measure - length_r_measure;
+    length_diff_tor = PIDCalculate(&Leg_Diff_PID, length_diff, 0);
+    joint_l_tor_feedforward = - 25.9625 * angle_l * angle_l * angle_l
+                              + 62.3065 * angle_l * angle_l
+                              - 51.3808 * angle_l
+                              + 18.8648 + length_diff_tor;
+    joint_r_tor_feedforward = - 25.9625 * angle_r * angle_r * angle_r
+                              + 62.3065 * angle_r * angle_r
+                              - 51.3808 * angle_r
+                              + 18.8648 - length_diff_tor;
+    
     // if(leg_mode == LEG_CLIMB_RETRACT)
     //     joint_limit(l_offset + angle_test, r_offset - angle_test);
     // else
