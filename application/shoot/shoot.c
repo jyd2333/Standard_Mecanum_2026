@@ -185,29 +185,30 @@ void ShootInit()
             .tx_id      = 1,
         },
         .controller_param_init_config = {
-            // .angle_PID = {
-            //     // 如果启用位置环来控制发弹,需要较大的I值保证输出力矩的线性度否则出现接近拨出的力矩大幅下降
-            //     .Kp     = 50, // 11
-            //     .Ki     = 0,
-            //     .Kd     = 0,
-            //     .MaxOut = 16000, // 200,
-            // },
+            .angle_PID = {
+                // 如果启用位置环来控制发弹,需要较大的I值保证输出力矩的线性度否则出现接近拨出的力矩大幅下降
+                .Kp     = 120,//50, // 11
+                .Ki     = 0,
+                .Kd     = 3,
+                .Improve       = PID_Integral_Limit,
+                .IntegralLimit = 5000,
+                .MaxOut = 150000, // 200,
+            },
             .speed_PID = {
-                .Kp            = 2, // 10
+                .Kp            = 1, // 10
                 .Ki            = 0, // 1
                 .Kd            = 0,
                 .Improve       = PID_Integral_Limit,
-                .IntegralLimit = 5000,
+                .IntegralLimit = 3000,
                 .MaxOut        = 10000,
             },
-
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED, 
             .speed_feedback_source = MOTOR_FEED,
-            .outer_loop_type    = SPEED_LOOP,              // 初始化成SPEED_LOOP,让拨盘停在原地,防止拨盘上电时乱转
-            .close_loop_type    = SPEED_LOOP, // SPEED_LOOP,
-            .motor_reverse_flag = MOTOR_DIRECTION_NORMAL,  // 注意方向设置为拨盘的拨出的击发方向
+            .outer_loop_type    = ANGLE_LOOP, // 初始化成SPEED_LOOP,让拨盘停在原地,防止拨盘上电时乱转
+            .close_loop_type    = SPEED_LOOP | ANGLE_LOOP,
+            .motor_reverse_flag = MOTOR_DIRECTION_NORMAL, // 注意方向设置为拨盘的拨出的击发方向
         },
         .motor_type = M2006 // 英雄使用m3508
     };
@@ -355,6 +356,15 @@ float diff1, diff2;
 uint8_t loadmode;
 float pid_kp = 1;
 
+loader_mode_e last_load_mode = LOAD_STOP;
+loader_state_e loader_state = LOAD_UNINIT;
+float loader_initial_offset = 0;
+float loader_pitch_offset = 0;
+float loader_offset = 0;
+int32_t load_count = 0;
+float cool_down_time = 0;
+float load_time_ms = 0;
+
 loader_mode_e last_mode;
 // friction_mode_e friction_text_mode = FRICTION_OFF;
 // shoot_mode_e shoot_text_mode       = SHOOT_OFF;
@@ -372,10 +382,10 @@ void ShootTask()
     // diff1 = fabs(friction_l->measure.speed_rpm + friction_r->measure.speed_rpm);
     // diff2 = fabs(friction_l2->measure.speed_rpm + friction_r2->measure.speed_rpm);
     static float shoot_speed=0, shoot2_speed=0, limit_shoot_speed;
-
+    
     // 从cmd获取控制数据
     SubGetMessage(shoot_sub, &shoot_cmd_recv);
-
+    shoot_cmd_recv.shoot_rate = 5;
     // shoot_cmd_recv.friction_mode = friction_text_mode;
     // shoot_cmd_recv.shoot_mode    = shoot_text_mode;
     // loadmode                     = shoot_cmd_recv.load_mode;
@@ -435,12 +445,19 @@ void ShootTask()
 //     return;
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
     // Load_Reverse();
+    if(loader_state == LOAD_UNINIT && loader->measure.ecd != 0) //确认已连接到拨盘
+    {
+        loader_initial_offset = loader->measure.total_angle;
+        load_count = 0;
+        loader_state = LOAD_REINIT;
+    }
+    cool_down_time = 1000 / shoot_cmd_recv.shoot_rate;
 #endif
     //    if(load_mode_private)shoot_aim_angle=loader->measure.total_angle - ONE_BULLET_DELTA_ANGLE;
     //    if(!load_mode_private)shoot_cmd_recv.load_mode = LOAD_STOP;
     //    load_mode_private=shoot_cmd_recv.load_mode;
     // 若不在休眠状态,根据robotCMD传来的控制模式进行拨盘电机参考值设定和模式切换
-    shoot_cmd_recv.shoot_rate = 16;
+
     switch (shoot_cmd_recv.load_mode) {
         // 停止拨盘
         case LOAD_STOP:
@@ -452,7 +469,7 @@ void ShootTask()
 #endif
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             // DJIMotorOuterLoop(loader, SPEED_LOOP); // 切换到速度环
-            DJIMotorSetRef(loader, 0);             // 同时设定参考值为0,这样停止的速度最快
+            // DJIMotorSetRef(loader, 0);             // 同时设定参考值为0,这样停止的速度最快
             shoot_heat_count[0] = shoot_cmd_recv.shoot_count;
             // DM_enable_flag=0;
 #endif
@@ -481,72 +498,82 @@ void ShootTask()
             //     break;
 
             // 速度环发射
-            shoot_heat_count[1] = shoot_count; // shoot_cmd_recv.shoot_count;
+            // shoot_heat_count[1] = shoot_count; // shoot_cmd_recv.shoot_count;
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
-            if (shoot_heat_count[1] - shoot_heat_count[0] >= 1) {
-                one_bullet = 1;
+            // if (shoot_heat_count[1] - shoot_heat_count[0] >= 1) {
+            //     one_bullet = 1;
+            // }
+            if(last_load_mode == LOAD_STOP)
+            {
+                load_count++;
             }
-            switch (one_bullet) {
-                case 1:
-                    DJIMotorSetRef(loader, 5000);
-                    break;
-                case 0:
-                    DJIMotorSetRef(loader, 5000);
-                    break;
-            }
-            break;
+            DJIMotorSetRef(loader, load_count * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset);
+            // switch (one_bullet) {
+            //     case 1:
+            //         DJIMotorSetRef(loader, 5000);
+            //         break;
+            //     case 0:
+            //         DJIMotorSetRef(loader, 5000);
+            //         break;
+            // }
+            // break;
             
 #endif
-            if (shoot_heat_count[1] - shoot_heat_count[0] >= 1) {
-                one_bullet = 1;
-            }
-            switch (one_bullet) {
-                case 1:
-#if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
-                    // DJIMotorSetRef(loader, 0);
-#endif
-#if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
-                    limit_speed = (limit_shoot_speed + (0 - limit_shoot_speed) * ramp_calc(&limit_off_ramp));
-                    ramp_init(&limit_on_ramp, 300);
-                    // DJIMotorSetRef(limit, limit_speed);
-                    // DJIMotorSetRef(limit, -20000);
-                    limit_shoot_speed = limit_speed;
-#endif
-                    break;
-                case 0:
-#if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
+//             if (shoot_heat_count[1] - shoot_heat_count[0] >= 1) {
+//                 one_bullet = 1;
+//             }
+//             switch (one_bullet) {
+//                 case 1:
+// #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
+//                     // DJIMotorSetRef(loader, 0);
+// #endif
+// #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
+//                     limit_speed = (limit_shoot_speed + (0 - limit_shoot_speed) * ramp_calc(&limit_off_ramp));
+//                     ramp_init(&limit_on_ramp, 300);
+//                     // DJIMotorSetRef(limit, limit_speed);
+//                     // DJIMotorSetRef(limit, -20000);
+//                     limit_shoot_speed = limit_speed;
+// #endif
+//                     break;
+//                 case 0:
+// #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
 
-                    // 速度环
-                    // DJIMotorSetRef(loader, -load_speed);
-                    // 切换到角度环
-                    //     if (shoot_cmd_recv.Shoot_Once_Flag)
-                    // {
-                    // 	DJIMotorOuterLoop(loader, ANGLE_LOOP);                                              // 切换到角度环
-                    //     DJIMotorSetRef(loader,shoot_cmd_recv.shoot_aim_angle);
-                    // }
-                    // else
-                    // {
-                    // 	DJIMotorOuterLoop(loader, SPEED_LOOP);
-                    //     DJIMotorSetRef(loader, 0);
-                    // }
+//                     // 速度环
+//                     // DJIMotorSetRef(loader, -load_speed);
+//                     // 切换到角度环
+//                     //     if (shoot_cmd_recv.Shoot_Once_Flag)
+//                     // {
+//                     // 	DJIMotorOuterLoop(loader, ANGLE_LOOP);                                              // 切换到角度环
+//                     //     DJIMotorSetRef(loader,shoot_cmd_recv.shoot_aim_angle);
+//                     // }
+//                     // else
+//                     // {
+//                     // 	DJIMotorOuterLoop(loader, SPEED_LOOP);
+//                     //     DJIMotorSetRef(loader, 0);
+//                     // }
 
-#endif
-#if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
-                    limit_speed = (limit_shoot_speed + (limit_speed_target - limit_shoot_speed) * ramp_calc(&limit_on_ramp));
-                    // ramp_init(&limit_off_ramp, 300);
-                    // DJIMotorSetRef(limit, limit_speed);
-                    limit_shoot_speed = limit_speed;
-#endif
-                    break;
-            }
-            last_mode = LOAD_1_BULLET;
+// #endif
+// #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
+//                     limit_speed = (limit_shoot_speed + (limit_speed_target - limit_shoot_speed) * ramp_calc(&limit_on_ramp));
+//                     // ramp_init(&limit_off_ramp, 300);
+//                     // DJIMotorSetRef(limit, limit_speed);
+//                     limit_shoot_speed = limit_speed;
+// #endif
+//                     break;
+//             }
+            // last_mode = LOAD_1_BULLET;
             break;
         // 连发模式
         case LOAD_BURSTFIRE:
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             if (shoot_cmd_recv.friction_mode == FRICTION_OFF) break;
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
-            DJIMotorSetRef(loader, shoot_cmd_recv.shoot_rate * 360 * REDUCTION_RATIO_LOADER / 8);
+            if((DWT_GetTimeline_ms() - load_time_ms) > cool_down_time)
+            {
+                load_count++;
+                load_time_ms = DWT_GetTimeline_ms();
+            }
+            DJIMotorSetRef(loader, load_count * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset);
             // x颗/秒换算成速度: 已知一圈的载弹量,由此计算出1s需要转的角度,注意换算角速度(DJIMotor的速度单位是angle per second)
 #endif
             break;
@@ -554,7 +581,8 @@ void ShootTask()
         case LOAD_REVERSE:
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
-            DJIMotorSetRef(loader, -20000);
+            // DJIMotorSetRef(loader, -20000);
+            DJIMotorSetRef(loader,loader->measure.total_angle - LOADER_ANGLE_PER_BULLET );
             
 // x颗/秒换算成速度: 已知一圈的载弹量,由此计算出1s需要转的角度,注意换算角速度(DJIMotor的速度单位是angle per second)
 #endif
@@ -588,6 +616,7 @@ void ShootTask()
     shoot_speed  = fric_speed;
     shoot2_speed = fric2_speed;
 #endif
+    last_load_mode = shoot_cmd_recv.load_mode;
     // 反馈数据
     memcpy(&shoot_feedback_data.shooter_local_heat, &local_heat, sizeof(float));
     memcpy(&shoot_feedback_data.shooter_heat_control, &heat_control, sizeof(int));

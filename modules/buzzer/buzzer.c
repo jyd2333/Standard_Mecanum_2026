@@ -18,7 +18,7 @@
 #include "user_lib.h"
 #include "robot_def.h"
 
-extern osThreadId_t BuzzerHandle; // 由于线程挂起后无法自己恢复，所以需要使用线程句柄
+// extern osThreadId_t BuzzerHandle; // 由于线程挂起后无法自己恢复，所以需要使用线程句柄
 static BuzzerInstance *buzzer = NULL;
 // 音符偏移量
 static const uint8_t _note_tab[] = {9, 11, 0, 2, 4, 5, 7};
@@ -71,18 +71,18 @@ void BuzzerRegister(void)
  * @param *sound 音乐字符串
  * @return  void
  */
-void BuzzerPlay(char *sound)
-{
-    // 如果蜂鸣器未注册，则注册
-    if (buzzer == NULL) {
-        BuzzerRegister();
-    }
-    if (buzzer->busy) return;
-    buzzer->sound      = sound;
-    buzzer->_next_tune = sound;
-    buzzer->busy       = 1;
-    osThreadResume(BuzzerHandle); // 恢复线程
-}
+// void BuzzerPlay(char *sound)
+// {
+//     // 如果蜂鸣器未注册，则注册
+//     if (buzzer == NULL) {
+//         BuzzerRegister();
+//     }
+//     if (buzzer->busy) return;
+//     buzzer->sound      = sound;
+//     buzzer->_next_tune = sound;
+//     buzzer->busy       = 1;
+//     osThreadResume(BuzzerHandle); // 恢复线程
+// }
 /**
  * @brief :  音符播放
  * @return   void

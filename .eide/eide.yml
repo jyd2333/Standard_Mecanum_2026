@@ -102,7 +102,9 @@ targets:
       libList:
         - modules/algorithm
         - Middlewares/ST/ARM/DSP/Lib
-    excludeList: []
+    excludeList:
+      - application/chassis/tempCodeRunnerFile.c
+      - application/chassis/Chassis1.c
     toolchain: GCC
     toolchainConfigMap:
       GCC:

@@ -43,7 +43,7 @@
 #define JOINT_RIGHT_DOWN_LIMIT      -1.55f//-1.05f
 #define PITCH_DOWN_LIMIT            -0.4f
 #define PITCH_UP_LIMIT              0.4f
-
+#define LOADER_ANGLE_PER_BULLET     3240.0f   //拨出一发弹丸拨盘转动角度(36*90)
 
 #define PITCH_FEED_TYPE     1 // 云台PITCH轴反馈值来源:编码器为0,陀螺仪为1
 #define PITCH_INS_FEED_TYPE 1//1 // 云台PITCH轴陀螺仪反馈:角度值为0,弧度制为1
@@ -165,6 +165,12 @@ typedef enum {
     LOAD_1_BULLET,  // 单发
     LOAD_BURSTFIRE, // 连发
 } loader_mode_e;
+
+typedef enum {
+    LOAD_UNINIT = 0,     // 未初始化
+    LOAD_REINIT,         // 预初始化
+    LOAD_INFRARED_INIT,  // 对射式红外传感器初始化
+} loader_state_e;
 
 typedef struct{
 	uint32_t send_ID;

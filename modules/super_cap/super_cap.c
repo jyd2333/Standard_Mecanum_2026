@@ -18,7 +18,9 @@
 #include "super_cap.h"
 #include "memory.h"
 #include "stdlib.h"
-extern volatile uint8_t superCap_watchdog;
+#include "chassis.h"
+
+extern uint8_t superCap_watchdog;
 static SuperCapInstance *super_cap_instance = NULL; // 可以由app保存此指针
 volatile pm01_od_t pm01_od;
 static float uint_to_float(int x_int, float x_min, float x_max, int bits)

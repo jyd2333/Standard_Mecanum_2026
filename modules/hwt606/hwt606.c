@@ -17,18 +17,18 @@ uint8_t hwt606_check_sum(uint8_t *data){
     for(int i=0;i<10;i++)sum+=data[i];
     return sum==data[10];
 }
-// void HWT606Decode(uint8_t *data){
+void HWT606Decode(uint8_t *data){
     
-//     if(data[0]==0x55&&data[1]==0x51){
-//         if(hwt606_check_sum(data))for(int k=0;k<3;k++)HWT606_info.accel[k]=(short)((short)data[2*k+3]<<8|data[2*k+2])*16*9.8/32768;
-//     }   
-//     if(data[11]==0x55&&data[12]==0x52){
-//         if(hwt606_check_sum(data+11))for(int k=0;k<3;k++)HWT606_info.gyro[k]=(short)((short)data[2*k+14]<<8|data[2*k+13])*2000/32768;
-//     }
-//     if(data[22]==0x55&&data[23]==0x53){
-//         if(hwt606_check_sum(data+22))for(int k=0;k<3;k++)HWT606_info.angle[k]=(short)((short)data[2*k+25]<<8|data[2*k+3+24])*180/32768;
-//     }
-// }
+    if(data[0]==0x55&&data[1]==0x51){
+        if(hwt606_check_sum(data))for(int k=0;k<3;k++)HWT606_info.accel[k]=(short)((short)data[2*k+3]<<8|data[2*k+2])*16*9.8/32768;
+    }   
+    if(data[11]==0x55&&data[12]==0x52){
+        if(hwt606_check_sum(data+11))for(int k=0;k<3;k++)HWT606_info.gyro[k]=(short)((short)data[2*k+14]<<8|data[2*k+13])*2000/32768;
+    }
+    if(data[22]==0x55&&data[23]==0x53){
+        if(hwt606_check_sum(data+22))for(int k=0;k<3;k++)HWT606_info.angle[k]=(short)((short)data[2*k+25]<<8|data[2*k+3+24])*180/32768;
+    }
+}
 void Hwt606RxCallback(){
     //hwt606_info_t_ptr->dt=DWT_GetDeltaT(&hwt606_info_t_ptr->DWT_CNT);
     DaemonReload(hwt606_daemon);

@@ -13,5 +13,9 @@
 #   '!Application/*.c':   -O0
 #   '**/*.c':             -O2 -gnu ...
 
-version: "2.0"
-options: {}
+version: "2.1"
+options:
+    Debug:
+        files: {}
+        alwaysBuildSourceFiles:
+            - application/chassis/chassis.c

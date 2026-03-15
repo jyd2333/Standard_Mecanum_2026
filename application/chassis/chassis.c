@@ -108,9 +108,9 @@ static float friction_lf_state = 0.0f;
 static float friction_rf_state = 0.0f;
 static float friction_lb_state = 0.0f;
 static float friction_rb_state = 0.0f;
-
 void ChassisInit()
 {
+    ;
 #if defined(CHASSIS_BOARD)
     BMI088_Init_Config_s config = {
         .acc_int_config  = {.GPIOx = GPIOC, .GPIO_Pin = GPIO_PIN_4},
@@ -333,6 +333,7 @@ void ChassisInit()
     chassis_sub = SubRegister("chassis_cmd", sizeof(Chassis_Ctrl_Cmd_s));
     chassis_pub = PubRegister("chassis_feed", sizeof(Chassis_Upload_Data_s));
  #endif // ONE_BOARD
+    ;
 }
 
 #define LF_CENTER ((HALF_TRACK_WIDTH + center_gimbal_offset_x + HALF_WHEEL_BASE - center_gimbal_offset_y) * DEGREE_2_RAD)
@@ -843,6 +844,8 @@ void ChassisTask()
     {
         case LEG_ACTIVE_SUSPENSION:
             dipAngle = 0;
+            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             // joint_l->ctrl.kp_set = 150;
             // joint_l->ctrl.kd_set = 2;
             // joint_l->ctrl.tor_set = 7;
@@ -853,6 +856,8 @@ void ChassisTask()
             break;
         case LEG_CLIMB:
             dipAngle = 0.1;
+            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             // joint_l->ctrl.kp_set = 150;
             // joint_l->ctrl.kd_set = 2;
             // joint_l->ctrl.tor_set = 7;
@@ -862,7 +867,9 @@ void ChassisTask()
             Chassis_Follow_PID.Kp = 105;
             break;
         case LEG_CLIMB_RETRACT:
-            dipAngle = 0;
+            dipAngle = -0.1;
+            joint_l->motor_settings.feedforward_flag = 0;
+            joint_r->motor_settings.feedforward_flag = 0;
             // joint_l->ctrl.kp_set = 50;
             // joint_l->ctrl.kd_set = 4;
             // joint_l->ctrl.tor_set = -6;
@@ -872,6 +879,8 @@ void ChassisTask()
             Chassis_Follow_PID.Kp = 50;
             break;
         default:
+            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             break;
     }
 
