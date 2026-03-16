@@ -36,6 +36,12 @@ int float_to_uint(float x_float, float x_min, float x_max, int bits)
     /* Converts a float to an unsigned int, given range and number of bits */
     float span   = x_max - x_min;
     float offset = x_min;
+    if (x_float <= x_min) {
+        return 0;
+    }
+    if (x_float >= x_max) {
+        return (1 << bits) - 1;
+    }
     return (int)((x_float - offset) * ((float)((1 << bits) - 1)) / span);
 }
 float uint_to_float(int x_int, float x_min, float x_max, int bits)

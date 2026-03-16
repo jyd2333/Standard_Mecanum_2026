@@ -272,7 +272,7 @@ void ChassisInit()
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit,
                 .IntegralLimit = 0.5,
-                .MaxOut = 10,
+                .MaxOut = 25,
             },
             //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
              .other_angle_feedback_ptr = &Chassis_IMU_data->output.INS_angle[1],  //等待修改   
@@ -654,7 +654,7 @@ volatile static float angle_avg;//, tor_avg;
 float angle_target, angle_l_target, angle_r_target;
 int16_t avg_count = 0, avg_i;
 // float l_offset = -0.311236, r_offset = 0.0434394;
-float l_offset = 0.7959, r_offset = 2.0103;
+float l_offset = 0.7133, r_offset = 2.349;
 float length_l_measure,length_r_measure,length_measure;
 float length_target;
 float angle_test = 0.07f;//0.17;
@@ -830,7 +830,7 @@ void ChassisTask()
             break;
         case CHASSIS_CLIMB_RETRACT:
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
-            chassis_cmd_recv.wz = 0;
+            // chassis_cmd_recv.wz = 0;
             cos_theta           = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta           = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode            = LEG_CLIMB_RETRACT;
