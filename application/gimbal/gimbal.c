@@ -26,6 +26,7 @@ extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
 float yaw_gyro_twoboard=0,yaw_current_feedforward;
 const float pitch_offset = 7.7f;
 float pitch_tor_feedforward = 0;
+float pitch_gyro_measure = 0;
 // static PID_Setting_s pitch_settings,yaw_settings;
 // extern float imu_angle[3];
 // extern float imu_gyro[3];
@@ -100,7 +101,7 @@ void GimbalInit()
                 .MaxOut = 100,
             },
             .speed_PID = {
-                .Kp            = 1500, // 18000, // 10500,//1000,//10000,// 11000
+                .Kp            = 1200, // 18000, // 10500,//1000,//10000,// 11000
                 .Ki            = 0,    // 0
                 .Kd            = 10,    // 10, // 30
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_OutputFilter,
@@ -172,21 +173,21 @@ void GimbalInit()
         .motor_type = DM_Motor,
         .controller_param_init_config ={
             .angle_PID = {
-                .Kp = 8,
-                .Ki = 0.5,
+                .Kp = 12.5,
+                .Ki = 0,
                 .Kd = 0.01,
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit ,
-                .IntegralLimit = 3,
-                .MaxOut = 10,
+                .IntegralLimit = 0.5,
+                .MaxOut = 20,
             },
             .speed_PID = {
-                .Kp = 2,
-                .Ki = 0.7,
+                .Kp = 0.91,
+                .Ki = 9.81,
                 .Kd = 0.0,
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit,
-                .IntegralLimit = 0.7,
+                .IntegralLimit = 1.5,
                 .MaxOut = 3,
             },
             //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
@@ -432,8 +433,10 @@ void GimbalTask()
     #endif
     #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     #ifndef pitch_motor->motor_controller.angle_PID.IntegralLimit = pitch_PID.gyro_mode.angle_PID.IntegralLimit;
-    pitch_tor_feedforward = 0.42146 * cos(1.43 + gimbal_IMU_data->output.INS_angle[0]);
-    pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
+    // pitch_tor_feedforward = 0.42146 * cos(1.43 + gimbal_IMU_data->output.INS_angle[0]);
+    // pitch_tor_feedforward = 
+    // pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
+    pitch_gyro_measure =  gimbal_IMU_data->INS_data.INS_gyro[1];
     switch (gimbal_cmd_recv.gimbal_mode) {
         // ??
         case GIMBAL_ZERO_FORCE:

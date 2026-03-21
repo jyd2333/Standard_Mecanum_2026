@@ -720,14 +720,14 @@ static void RemoteControlSet()
 
     if (rc_update_flag == 1)
     {
-        // if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
-        // {
-        //     if (gimbal_cmd_send.nuc_mode != version_control)
-        //         gimbal_cmd_send.nuc_mode = version_control;
-        //     else
-        //         gimbal_cmd_send.nuc_mode = none_version_control;
-        // }
-        gimbal_cmd_send.nuc_mode = none_version_control;
+        if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
+        {
+            if (gimbal_cmd_send.nuc_mode != version_control)
+                gimbal_cmd_send.nuc_mode = version_control;
+            else
+                gimbal_cmd_send.nuc_mode = none_version_control;
+        }
+        // gimbal_cmd_send.nuc_mode = none_version_control;
         
         switch (rc_data[TEMP].rc.switch_left)
         {
@@ -1343,7 +1343,7 @@ DeterminRobotID();
         chassis_cmd_send.power_limit=refree_power_choice(referee_data->GameRobotState.robot_level);
         //chassis_cmd_send.power_limit=100;//referee_data->GameRobotState.chassis_power_limit-10;
     }
-    else chassis_cmd_send.power_limit=500;//100;//refree_power_choice(referee_data->GameRobotState.robot_level);
+    else chassis_cmd_send.power_limit=100;//100;//refree_power_choice(referee_data->GameRobotState.robot_level);
     g_power_set=chassis_cmd_send.power_limit;
     // chassis_cmd_send.power_limit=20;
     chassis_cmd_send.level=referee_data->GameRobotState.robot_level;

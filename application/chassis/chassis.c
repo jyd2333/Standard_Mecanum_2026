@@ -716,8 +716,8 @@ void ChassisTask()
         DJIMotorEnable(motor_rf);
         DJIMotorEnable(motor_lb);
         DJIMotorEnable(motor_rb);
-        DMMotorEnable1(joint_l);
-        DMMotorEnable1(joint_r);
+        // DMMotorEnable1(joint_l);
+        // DMMotorEnable1(joint_r);
     }
 
     static float offset_angle;

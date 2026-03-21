@@ -32,7 +32,7 @@
 
 #define PITCH_POS_MAX_ECD           4650
 #define PITCH_POS_MIN_ECD           5700
-#define YAW_CHASSIS_ALIGN_ECD       6640 // 云台和底盘对齐指向相同方向时的电机编码器值,若对云台有机械改动需要修改
+#define YAW_CHASSIS_ALIGN_ECD       6591 // 云台和底盘对齐指向相同方向时的电机编码器值,若对云台有机械改动需要修改
 #define YAW_ECD_GREATER_THAN_4096   1    // ALIGN_ECD值是否大于4096,是为1,否为0;用于计算云台偏转角度
 #define PITCH_HORIZON_ECD           5225 // 云台处于水平位置时编码器值,若对云台有机械改动需要修改
 #define PITCH_POS_UP_LIMIT_ECD      6191 // 云台竖直方向高处限位编码器值,若对云台有机械改动需要修改
@@ -61,7 +61,7 @@
 #define RADIUS_WHEEL           77   // 轮子半径
 #define REDUCTION_RATIO_WHEEL  19.0f // 电机减速比,因为编码器量测的是转子的速度而不是输出轴的速度故需进行转换
 
-#define CHASSIS_SPEED          40000 // 键盘控制不限功率时底盘最大移动速度
+#define CHASSIS_SPEED          100 // 键盘控制不限功率时底盘最大移动速度
 #define YAW_K                  0.00025f
 #define PITCH_K                0.000004f
 
