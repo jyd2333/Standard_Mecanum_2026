@@ -976,21 +976,7 @@ static void ShootSet()
         // 打弹，单击左键单发，长按连发
         if (rc_data[TEMP].mouse.press_l) 
         {
-            if (gimbal_cmd_send.nuc_mode == none_version_control)
-            {
-                shoot_cmd_send.load_mode = LOAD_1_BULLET;
-            }
-            else
-            {
-                if (fire_advice == 1)
-                {
-                    shoot_cmd_send.load_mode = LOAD_1_BULLET;
-                }
-                else
-                {
-                    shoot_cmd_send.load_mode = LOAD_STOP;
-                }
-            }
+            shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
             // 打符，单发
             // if (auto_rune == 1) {
             //     shoot_cmd_send.load_mode = LOAD_1_BULLET;
@@ -998,7 +984,22 @@ static void ShootSet()
             //     shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
             // }
         } else {
-            shoot_cmd_send.load_mode = LOAD_STOP;
+            if (gimbal_cmd_send.nuc_mode == none_version_control)
+            {
+                shoot_cmd_send.load_mode = LOAD_STOP;
+            }
+            else
+            {
+                if (fire_advice == 1)
+                {
+                    shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
+                }
+                else
+                {
+                    shoot_cmd_send.load_mode = LOAD_STOP;
+                }
+            }
+            
         }
     } else {
         shoot_cmd_send.load_mode = LOAD_STOP;
@@ -1009,6 +1010,7 @@ static void ShootSet()
     if(rc_data[TEMP].mouse.press_r)
     {
         gimbal_cmd_send.nuc_mode = version_control;
+
     }
     else
     {
@@ -1250,6 +1252,7 @@ float refree_power_choice(uint8_t level){
 }
 float yawSpeedFeed;
 float yaw_pid[3];
+volatile static bool FIFO_state;
 void RobotCMDTask()
 {
 #ifdef CHASSIS_BOARD 
@@ -1392,7 +1395,9 @@ DeterminRobotID();
 // DeterminRobotID();
 //Judge_Uart();
        //视觉
-   if(FIFO_Read(&NUC_fifo,fifo_pack,NUC_RECV_SIZE,0XFF,0X0D))USB_Version_devode();
+
+    FIFO_state = FIFO_Read(&NUC_fifo,fifo_pack,NUC_RECV_SIZE,0XFF,0X0D);
+   if(FIFO_state)USB_Version_devode();
     // *nuc_can_rx=*(uint8_t*)CANCommGet(cmd_can_comm);
     //chassis_fetch_data = *(Chassis_Upload_Data_s *)CANCommGet(cmd_can_comm);
     if(FIFO_Read_chassis_ctrl(&rs485_master_fifo,chasssis_update_data,Chassis_Upload_Data_s_uart_size+3,0xff,0xfd)){
@@ -1467,7 +1472,7 @@ DeterminRobotID();
     float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 4);//低位先行
     yaw_reverse =  gimbal_fetch_data.gimbal_imu_data->output.INS_angle[2];
     float_to_uint8_manual(yaw_reverse, vision_send_data + 8);
-    
+    memcpy(&chassis_fetch_data_uart.initial_speed,&vision_send_data[26],4);
     static uint8_t nuc_cnt = 25;
     nuc_cnt = (nuc_cnt + 1) % 25 + 25;
     vision_send_data[30]=nuc_cnt;

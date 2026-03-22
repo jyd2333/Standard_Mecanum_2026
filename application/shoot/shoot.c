@@ -27,7 +27,7 @@ int32_t shoot_count;                     // 已发弹量
 #define BUTTON_PRESSED    GPIO_PIN_RESET // 按键按下时引脚电平，通常为低电平
 #define BUTTON_RELEASED   GPIO_PIN_SET   // 按键释放时引脚电平，通常为高电平
 int load_speed           = 15000;
-float shoot_speed_target = 40000, shoot2_speed_target = 40000, limit_speed_target = 400;
+float shoot_speed_target = 36000, shoot2_speed_target = 36000, limit_speed_target = 400;
 // 定义按键状态
 typedef enum {
     BUTTON_STATE_IDLE,     // 按键未按下状态
@@ -385,7 +385,7 @@ void ShootTask()
     
     // 从cmd获取控制数据
     SubGetMessage(shoot_sub, &shoot_cmd_recv);
-    shoot_cmd_recv.shoot_rate = 5;
+    shoot_cmd_recv.shoot_rate = 10;
     // shoot_cmd_recv.friction_mode = friction_text_mode;
     // shoot_cmd_recv.shoot_mode    = shoot_text_mode;
     // loadmode                     = shoot_cmd_recv.load_mode;
@@ -505,7 +505,9 @@ void ShootTask()
             // }
             if(last_load_mode == LOAD_STOP)
             {
-                load_count++;
+                if(((load_count-2) * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset
+                - loader->measure.total_angle)<0)
+                    load_count++ ;
             }
             DJIMotorSetRef(loader, load_count * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset);
             // switch (one_bullet) {
@@ -570,7 +572,9 @@ void ShootTask()
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
             if((DWT_GetTimeline_ms() - load_time_ms) > cool_down_time)
             {
-                load_count++;
+                if(((load_count-2) * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset
+                - loader->measure.total_angle)<0)
+                    load_count++ ;
                 load_time_ms = DWT_GetTimeline_ms();
             }
             DJIMotorSetRef(loader, load_count * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset);
