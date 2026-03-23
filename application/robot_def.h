@@ -21,7 +21,7 @@
 /* 开发板类型定义,烧录时注意不要弄错对应功能;修改定义后需要重新编译,只能存在一个定义! */
 //#define ONE_BOARD // 单板控制整车
 #define CHASSIS_BOARD //底盘板
-// #define GIMBAL_BOARD  //云台板
+//#define GIMBAL_BOARD  //云台板
 #define VISION_USE_VCP // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
 // #define BIG_HEAD
@@ -172,6 +172,11 @@ typedef enum {
     LOAD_INFRARED_INIT,  // 对射式红外传感器初始化
 } loader_state_e;
 
+typedef enum {
+    SUPERCAP_UNUSE = 0,
+    SUPERCAP_USE
+} SuperCap_Mode_e;
+
 typedef struct{
 	uint32_t send_ID;
 	uint32_t receive_ID;
@@ -279,7 +284,7 @@ typedef struct
     float SuperCap_voltage;          // 超电电压
     float Chassis_Ctrl_power;        // 底盘控制功率
     uint16_t Cap_absorb_power_limit; // 超电吸收功率
-    float Chassis_voltage;           // 底盘电压
+    uint8_t cap_online_flag;
     uint16_t Chassis_power_limit;    // 底盘功率
     uint16_t Shooter_heat;              // 枪口热量
     uint8_t robot_level;
@@ -302,7 +307,7 @@ typedef struct
     float real_vx;
     float real_vy;
     float real_wz;
-    uint8_t CapFlag_open_from_real;
+    uint8_t cap_online_flag;
     float cap_voltage;
     uint16_t capget_power_limit;
     float chassis_power_output;

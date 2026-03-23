@@ -54,7 +54,7 @@ static Chassis_Ctrl_Cmd_s chassis_cmd_recv;         // 底盘接收到的控制�
 static Chassis_Ctrl_Cmd_s_half_float chassis_cmd_recv_half_float;
 static Chassis_Upload_Data_s chassis_feedback_data; // 底盘回传的反馈数据
 
-SuperCapInstance *cap;                                              // 超级电容
+static SuperCapInstance *supercap;                                        // 超级电容
 static DJIMotorInstance *motor_lf, *motor_rf, *motor_lb, *motor_rb; // left right forward back
 DMMotorInstance *joint_l, *joint_r;
 extern referee_info_t *referee_data_for_ui;
@@ -307,13 +307,13 @@ void ChassisInit()
     joint_motor_config.controller_param_init_config.current_feedforward_ptr = &joint_r_tor_feedforward;
     joint_r = DMMotorInit(&joint_motor_config);
     
-    SuperCap_Init_Config_s cap_conf = {
+    SuperCap_Init_Config_s supercap_config = {
         .can_config = {
-            .can_handle = &hcan2,
-            // .tx_id      = 0X427, // 超级电容默认接收id
-            // .rx_id      = 0x300, // 超级电容默认发送id,注意tx和rx在其他人看来是反的
-        }};
-    cap = SuperCapInit(&cap_conf); // 超级电容初始化
+            .can_handle = &hcan1,
+        },
+    };
+    supercap = SuperCapInit(&supercap_config);
+    SuperCapEnable(supercap);
 
     GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_9|GPIO_PIN_11;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -429,107 +429,43 @@ static void MecanumCalculate()
 
 static ramp_t super_ramp;
 static float Power_Output;
-float superCap_buff=50;
-/**
- * @brief 根据裁判系统和电容剩余容量对输出进行限制并设置电机参考值
- * @param
- * @param
- *
- */
- static void LimitChassisOutput()
- {
-     static float Plimit;
-
-    // 缓冲能量闭环
-    if (chassis_cmd_recv.power_buffer < 50 && chassis_cmd_recv.power_buffer >= 40)
-        Plimit = 0.9 + (chassis_cmd_recv.power_buffer - 40) * 0.01;
-    else if (chassis_cmd_recv.power_buffer < 40 && chassis_cmd_recv.power_buffer >= 35)
-        Plimit = 0.75 + (chassis_cmd_recv.power_buffer - 35) * (0.15f / 5);
-    else if (chassis_cmd_recv.power_buffer < 35 && chassis_cmd_recv.power_buffer >= 30)
-        Plimit = 0.6 + (chassis_cmd_recv.power_buffer - 30) * (0.15 / 5);
-    else if (chassis_cmd_recv.power_buffer < 30 && chassis_cmd_recv.power_buffer >= 20)
-        Plimit = 0.35 + (chassis_cmd_recv.power_buffer - 20) * (0.25f / 10);
-    else if (chassis_cmd_recv.power_buffer < 20 && chassis_cmd_recv.power_buffer >= 10)
-        Plimit = 0.15 + (chassis_cmd_recv.power_buffer - 10) * 0.01;
-    else if (chassis_cmd_recv.power_buffer < 10 && chassis_cmd_recv.power_buffer > 0)
-        Plimit = 0.05 + chassis_cmd_recv.power_buffer * 0.01;
-    else if (chassis_cmd_recv.power_buffer == 60)
-        Plimit = 1;
-    // Plimit = 0;
-    // if(chassis_cmd_recv.SuperCap_flag_from_user==SUPERCAP_PMOS_OPEN){
-    //     Power_Output=chassis_cmd_recv.power_limit - 10 + 20 * Plimit+superCap_buff;
-    // }
-    // else {
-    Power_Output = chassis_cmd_recv.power_limit - 10 + 20 * Plimit;
-    // }
-    //超电
-    PowerControlupdate(Power_Output, 1.0f / REDUCTION_RATIO_WHEEL);
-
-    ramp_init(&super_ramp, 300);
- }
-float cap_power_output;
-float super_power_max=0;
-// 提高功率上限，飞坡或跑路
-static void SuperLimitOutput()
-{
-    static float power_output;
-    if(pm01_od.v_out>21)cap_power_output=chassis_cmd_recv.power_limit+120;
-    else cap_power_output=chassis_cmd_recv.power_limit +10 + 100 * (0.01f*(float)pm01_od.v_out- 16.0f) / 5.0f;
-    Power_Output = (power_output + (cap_power_output - power_output) * ramp_calc(&super_ramp));
-    // Power_Output = (power_output + (250 - 20 + 40 * (cap->cap_msg_s.CapVot - 17.0f) / 6.0f - power_output) * ramp_calc(&super_ramp));
-    PowerControlupdate(Power_Output, 1.0f / REDUCTION_RATIO_WHEEL);
-
-    power_output = Power_Output;
-}
-
+const float buffer_energy_loop_kp = 0.5f;
+const float cap_voltage_loop_kp = 20.0f;
 /**
  * @brief 超电控制算法
  *
  *
  */
-// uint8_t Super_Voltage_Allow_Flag;
-// static SuperCap_State_e SuperCap_state = SUPER_STATE_LOW;
  void Super_Cap_control()
  {
-//     // 状态机逻辑,滞回
-//     switch (SuperCap_state) {
-//         case SUPER_STATE_LOW:
-//             if (cap->cap_msg_s.CapVot > SUPER_VOLTAGE_THRESHOLD_HIGH) {
-//                 SuperCap_state = SUPER_STATE_HIGH;
-//             }
-//             break;
-//         case SUPER_STATE_HIGH:
-//             if (cap->cap_msg_s.CapVot < SUPER_VOLTAGE_THRESHOLD_LOW) {
-//                 SuperCap_state = SUPER_STATE_LOW;
-//             }
-//             break;
-//         default:
-//             SuperCap_state = SUPER_STATE_LOW;
-//             break;
-//     }
+    float buffer_power_rectification, cap_power_rectification;
+    float buffer_energy_target, buffer_energy_actual, cap_voltage_target, cap_voltage_actual;
 
-//     // 小于12V关闭
-//     if (SuperCap_state == SUPER_STATE_LOW) {
-//         Super_Voltage_Allow_Flag = SUPER_VOLTAGE_CLOSE;
-//     } else if (SuperCap_state == SUPER_STATE_HIGH) {
-//         Super_Voltage_Allow_Flag = SUPER_VOLTAGE_OPEN;
-//     } else {
-//         // none
-//     }
+    Power_Output = chassis_cmd_recv.power_limit;
 
-//     // User允许开启电容 且 电压充足
-//     if (chassis_cmd_recv.SuperCap_flag_from_user == SUPER_USER_OPEN) {
-//         cap->cap_msg_g.enabled = SUPER_CMD_OPEN;
-if(chassis_cmd_recv.SuperCap_flag_from_user==SUPERCAP_PMOS_OPEN){
-        SuperLimitOutput();
-}
-//     } else {
-//         cap->cap_msg_g.enabled = SUPER_CMD_CLOSE;
-else {
-         LimitChassisOutput();
-}
-//     }
+    //缓冲能量环
+    buffer_energy_actual = chassis_cmd_recv.power_buffer;
+    buffer_energy_target = 50.0f;
+    buffer_power_rectification = (buffer_energy_actual - buffer_energy_target) * buffer_energy_loop_kp;
+    Power_Output += buffer_power_rectification;
 
+    //电容能量环
+    if (SuperCapIsOnline(supercap))
+    {
+        cap_voltage_actual = SuperCapGetChassisVoltage(supercap);
+        if (chassis_cmd_recv.SuperCap_flag_from_user == SUPERCAP_USE)
+            cap_voltage_target = 15.0f;
+        else cap_voltage_target = 23.0f;
+        cap_power_rectification = (cap_voltage_actual - cap_voltage_target) * cap_voltage_loop_kp;
+        if (cap_power_rectification > 50.0f) cap_power_rectification = 70.0f;
+        Power_Output += cap_power_rectification;
+    }
+    
+    Power_Output -= 10.0f; //静态功耗
+
+    PowerControlupdate(Power_Output, 1.0f / REDUCTION_RATIO_WHEEL);
+
+    SuperCapSetPowerLimit(supercap, chassis_cmd_recv.power_limit);
      // 设定速度参考值
     DJIMotorSetRef(motor_lf, vt_lf);
     DJIMotorSetRef(motor_rf, vt_rf);
@@ -763,21 +699,17 @@ void ChassisTask()
         // vw_set = chassis_cmd_recv.vw_set;
         // vxy_k=chassis_cmd_recv.wz_K;
             // if (cap->cap_msg_s.SuperCap_open_flag_from_real == SUPERCAP_PMOS_OPEN) {
-            if(chassis_cmd_recv.SuperCap_flag_from_user==SUPERCAP_PMOS_OPEN){
-                powerLim=200;
-                if(chassis_cmd_recv.wz_K)vxy_k=chassis_cmd_recv.wz_K;
-                else vxy_k=5;
-                if(chassis_cmd_recv.wz)vw_set=chassis_cmd_recv.wz;
-                else vw_set=25000;
-                // vxy_k=chassis_cmd_recv.wz_K;
-            } else {
+            
                 powerLim=chassis_cmd_recv.power_limit;
                 // chassis_cmd_recv.power_limit=110;
-                vw_set=getWzspeed(chassis_cmd_recv.power_limit);
+                if (chassis_cmd_recv.SuperCap_flag_from_user == SUPERCAP_USE) {
+                    vw_set = 5000;
+                } else {
+                    vw_set = 3000;
+                }
                 vxy_k =1;
                 // vxy_k=textkd;
                 // 26.6f*chassis_cmd_recv.power_limit+1537;
-            }
             chassis_vw       = (current_speed_vw + (vw_set - current_speed_vw) * ramp_calc(&rotate_ramp));
             current_speed_vw = chassis_vw;
 
@@ -941,18 +873,19 @@ void ChassisTask()
 
     // 根据裁判系统的反馈数据和电容数据对输出限幅并设定闭环参考值
     Super_Cap_control();
+    SuperCapTask();
 #endif                                                         // CHASSIS_BOARD
     // 获得给电容传输的电容吸取功率等级
     // Power_get();
 
     // 给电容传输数据
     // SuperCapSend(cap, (uint8_t *)&cap->cap_msg_g);
-
+    float cap_voltage = SuperCapGetChassisVoltage(supercap);
+    uint8_t cap_online = SuperCapIsOnline(supercap);
     // 推送反馈消息
-    memcpy(&chassis_feedback_data.CapFlag_open_from_real, &cap->cap_msg_s.SuperCap_open_flag_from_real, sizeof(uint8_t));
-    memcpy(&chassis_feedback_data.cap_voltage, &cap->cap_msg_s.CapVot, sizeof(float));
+    memcpy(&chassis_feedback_data.cap_voltage, &cap_voltage, sizeof(float));
+    memcpy(&chassis_feedback_data.cap_online_flag, &cap_online, sizeof(uint8_t));
     memcpy(&chassis_feedback_data.chassis_power_output, &Power_Output, sizeof(float));
-    memcpy(&chassis_feedback_data.chassis_voltage, &cap->cap_msg_s.chassis_voltage_from_cap, sizeof(float));
    
 #ifdef ONE_BOARD
     PubPushMessage(chassis_pub, (void *)&chassis_feedback_data);

@@ -178,18 +178,12 @@ static void CANFIFOxCallback(CAN_HandleTypeDef *_hcan, uint32_t fifox)
     while (HAL_CAN_GetRxFifoFillLevel(_hcan, fifox)) // FIFO不为空,有可能在其他中断时有多帧数据进入
     {
         HAL_CAN_GetRxMessage(_hcan, fifox, &rxconf, can_rx_buff); // 从FIFO中获取数据
-        if(rxconf.StdId>0x5ff&&rxconf.RTR!=CAN_RTR_REMOTE)
-        {
-            SuperCap_decode(can_rx_buff,rxconf.StdId);
-            return;
-        }
         
-        // if (rxconf.StdId == 0x01)
-        // {
-        //     DM4310_Decode(can_rx_buff);
-        //     return;
-        // }
-
+         if (rxconf.StdId == 0x610 || rxconf.StdId == 0x611 ||
+            rxconf.StdId == 0x612 || rxconf.StdId == 0x613)
+        {
+            SuperCapRxCallback(rxconf, can_rx_buff);
+        }
 
         for (size_t i = 0; i < idx; ++i)
         { // 两者相等说明这是要找的实例

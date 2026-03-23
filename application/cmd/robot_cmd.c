@@ -686,7 +686,7 @@ static void EmergencyHandler()
     shoot_cmd_send.friction_mode  = FRICTION_OFF;
     shoot_cmd_send.load_mode      = LOAD_STOP;
     shoot_cmd_send.shoot_mode     = SHOOT_OFF;
-  //  SuperCap_flag_from_user       = SUPER_USER_CLOSE;
+    SuperCap_flag_from_user     = SUPERCAP_UNUSE;
     memset(rc_mode, 1, sizeof(uint8_t));
     memset(rc_mode + 1, 0, sizeof(uint8_t) * 4);
     LOGERROR("[CMD] emergency stop!");
@@ -720,12 +720,20 @@ static void RemoteControlSet()
 
     if (rc_update_flag == 1)
     {
+        // if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
+        // {
+        //     if (gimbal_cmd_send.nuc_mode != version_control)
+        //         gimbal_cmd_send.nuc_mode = version_control;
+        //     else
+        //         gimbal_cmd_send.nuc_mode = none_version_control;
+        // }
+
         if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
         {
-            if (gimbal_cmd_send.nuc_mode != version_control)
-                gimbal_cmd_send.nuc_mode = version_control;
+            if (SuperCap_flag_from_user == SUPERCAP_UNUSE)
+                SuperCap_flag_from_user = SUPERCAP_USE;
             else
-                gimbal_cmd_send.nuc_mode = none_version_control;
+                SuperCap_flag_from_user = SUPERCAP_UNUSE;
         }
         // gimbal_cmd_send.nuc_mode = none_version_control;
         
@@ -1081,10 +1089,10 @@ static void KeyGetMode()
     }
     switch (rc_data[TEMP].key[KEY_PRESS].shift) {
         case 1:
-            SuperCap_flag_from_user = SUPER_USER_OPEN;
+            SuperCap_flag_from_user = SUPERCAP_USE;
             break;
         case 0:
-            SuperCap_flag_from_user = SUPER_USER_CLOSE;
+            SuperCap_flag_from_user = SUPERCAP_UNUSE;
             break;
     }
 }
@@ -1342,17 +1350,12 @@ DeterminRobotID();
     chassis_cmd_send.offset_angle=chassis_rs485_recv.offset_angle;
     chassis_cmd_send.gimbal_error_angle=chassis_rs485_recv.gimbal_error_angle;
     // chassis_cmd_send.wz_K=chassis_rs485_recv.wz_K;
-    if(referee_data->GameRobotState.chassis_power_limit){
-        chassis_cmd_send.power_limit=refree_power_choice(referee_data->GameRobotState.robot_level);
-        //chassis_cmd_send.power_limit=100;//referee_data->GameRobotState.chassis_power_limit-10;
-    }
-    else chassis_cmd_send.power_limit=100;//100;//refree_power_choice(referee_data->GameRobotState.robot_level);
+    chassis_cmd_send.power_limit = referee_data->GameRobotState.chassis_power_limit;
     g_power_set=chassis_cmd_send.power_limit;
     // chassis_cmd_send.power_limit=20;
     chassis_cmd_send.level=referee_data->GameRobotState.robot_level;
     chassis_cmd_send.power_buffer=referee_data->PowerHeatData.chassis_power_buffer;
     chassis_cmd_send.SuperCap_flag_from_user=chassis_rs485_recv.superCap_flag;
-    if(pm01_od.v_out<1600)chassis_cmd_send.SuperCap_flag_from_user=0;
     // chassis_update_485(chassis_fetch_data_uart);
     if(signl<0){
         gimbal_cmd_send.gimbal_mode=GIMBAL_ZERO_FORCE;
@@ -1375,12 +1378,12 @@ DeterminRobotID();
     memcpy(&ui_cmd_send.friction_mode, &shoot_cmd_send.friction_mode, sizeof(friction_mode_e));
     memcpy(&ui_cmd_send.rune_mode, &auto_rune, sizeof(uint8_t));
     memcpy(&ui_cmd_send.SuperCap_mode, &chassis_rs485_recv.superCap_flag, sizeof(uint8_t));
-    float power_value=0.01f*(float)pm01_od.v_out;
-    memcpy(&ui_cmd_send.SuperCap_voltage, &power_value, sizeof(float));
+    memcpy(&ui_cmd_send.SuperCap_voltage, &chassis_fetch_data.cap_voltage, sizeof(float));
     memcpy(&ui_cmd_send.Chassis_Ctrl_power, &chassis_fetch_data.chassis_power_output, sizeof(float));
     memcpy(&ui_cmd_send.Cap_absorb_power_limit, &chassis_fetch_data.capget_power_limit, sizeof(uint16_t));
     memcpy(&ui_cmd_send.Chassis_power_limit, &referee_data->GameRobotState.chassis_power_limit, sizeof(uint16_t));
     memcpy(&ui_cmd_send.Shooter_heat, &referee_data->PowerHeatData.shooter_42mm_heat, sizeof(uint16_t));
+    memcpy(&ui_cmd_send.cap_online_flag, &chassis_fetch_data.cap_online_flag, sizeof(uint8_t));
     memcpy(&ui_cmd_send.nuc_flag, &chassis_rs485_recv.nuc_mode, sizeof(uint8_t));
     // memcpy(&ui_cmd_send.Shooter_heat, &shoot_fetch_data.shooter_local_heat, sizeof(float));
     memcpy(&ui_cmd_send.robot_level,&referee_data->GameRobotState.robot_level,sizeof(uint8_t));

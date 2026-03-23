@@ -236,7 +236,7 @@ void UIDynamicRefresh()
     // }
 
 
-    if (ui_cmd_recv.SuperCap_mode == SUPERCAP_PMOS_OPEN) {
+    if (ui_cmd_recv.SuperCap_mode == SUPERCAP_USE) {
         UICircleDraw(&state_circle[3], "oc3", UI_Graph_Change, 9, UI_Color_Main, 10, 1300, 160, 10);
         // UIFloatDraw(&Cap_voltage, "of1", UI_Graph_Change, 9, UI_Color_Pink, 12, 1, 4, 860, 640, (ui_cmd_recv.SuperCap_voltage)*1000);
         // UILineDraw(&shoot_line[4], "ol4", UI_Graph_Change, 9, UI_Color_Purplish_red, 5, 725, 640, 725+ui_cmd_recv.SuperCap_voltage/24.0f*125.0f, 640);

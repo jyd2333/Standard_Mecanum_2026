@@ -1,115 +1,163 @@
-/**
- * @Author: HDC h2019dc@outlook.com
- * @Date: 2023-09-08 16:47:43
- * @LastEditors: HDC h2019dc@outlook.com
- * @LastEditTime: 2023-10-24 20:01:02
- * @FilePath: \2024_Control_New_Framework_Base-dev-all\modules\super_cap\super_cap.c
- * @Description:
- *
- * Copyright (c) 2023 by Alliance-EC, All Rights Reserved.
- */
-/*
- * @Descripttion:
- * @version:
- * @Author: Chenfu
- * @Date: 2022-12-02 21:32:47
- * @LastEditTime: 2022-12-05 15:29:49
- */
+#include <memory.h>
+#include <stdlib.h>
+#include "cmsis_os.h"
 #include "super_cap.h"
-#include "memory.h"
-#include "stdlib.h"
-#include "chassis.h"
 
-extern uint8_t superCap_watchdog;
-static SuperCapInstance *super_cap_instance = NULL; // 可以由app保存此指针
-volatile pm01_od_t pm01_od;
-static float uint_to_float(int x_int, float x_min, float x_max, int bits)
+enum SuperCapStates{STATE_CMD_SET = 0x00, STATE_POWER_SET, STATE_VOLTAGE_SET, STATE_CURRENT_SET,
+                    STATE_STATUS_READ, STATE_INPUT_READ, STATE_OUTPUT_READ, STATE_OTHER_READ} state;
+static SuperCapInstance *supercap = NULL;
+const CAN_TxHeaderTypeDef tx_header_table[] = {
+    [0] = {.StdId = 0x600 , .DLC = 0x04 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA},//cmd_set
+    [1] = {.StdId = 0x601 , .DLC = 0x04 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA},//power_set
+    [2] = {.StdId = 0x602 , .DLC = 0x04 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA},//voltage_set
+    [3] = {.StdId = 0x603 , .DLC = 0x04 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_DATA},//current_set
+
+    // [4] = {.StdId = 0x600 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//cmd_read
+    // [5] = {.StdId = 0x601 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//power_read
+    // [6] = {.StdId = 0x602 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//voltage_read
+    // [7] = {.StdId = 0x603 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//current_read
+    [4] = {.StdId = 0x610 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//status_read
+    [5] = {.StdId = 0x611 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//input_read
+    [6] = {.StdId = 0x612 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//output_read
+    [7] = {.StdId = 0x613 , .DLC = 0x00 , .IDE = CAN_ID_STD, .RTR = CAN_RTR_REMOTE},//temperature & time read
+};
+static uint8_t can_tx_data[8];
+
+void SuperCapEnable(SuperCapInstance *instance)
 {
-    float span   = x_max - x_min;
-    float offset = x_min;
-    return ((float)x_int) * span / ((float)((1 << bits) - 1)) + offset;
+    instance->tx_data.enable_flag = 2;
 }
 
-static void SuperCapRxCallback(CANInstance *_instance)
+void SuperCapDisable(SuperCapInstance *instance)
 {
-    struct _packed {
-        uint16_t chassis_power;
-        uint16_t cap_voltage;
-        uint16_t chassis_voltage;
-        uint8_t enabled;
-        uint8_t unused;
-    } *rxbuff;
-    SuperCap_Msg_s *Msg;
-    rxbuff = _instance->rx_buff;
-
-    Msg                               = &super_cap_instance->cap_msg_s;
-    Msg->chassis_power_from_cap       = uint_to_float(rxbuff->chassis_power, 0.0, 500.0, 16);
-    Msg->chassis_voltage_from_cap     = uint_to_float(rxbuff->chassis_voltage, 0.0, 50.0, 16);
-    Msg->CapVot                       = uint_to_float(rxbuff->cap_voltage, 0.0, 50.0, 16);
-    Msg->SuperCap_open_flag_from_real = rxbuff->enabled;
-}
-uint32_t supID[8]={0x600,0x601,0x602,0x603,0x610,0x611,0x612,0x613};
-
-SuperCapInstance *SuperCapInit(SuperCap_Init_Config_s *supercap_config)
-{
-    super_cap_instance = (SuperCapInstance *)malloc(sizeof(SuperCapInstance));
-    memset(super_cap_instance, 0, sizeof(SuperCapInstance));
-
-    supercap_config->can_config.can_module_callback = SuperCapRxCallback;
-    for(size_t i=0;i<8;i++){
-        supercap_config->can_config.rx_id=supID[i];
-    super_cap_instance->can_ins                     = CANRegister(&supercap_config->can_config);
-    }
-    superCap_watchdog=500;
-    return super_cap_instance;
+    instance->tx_data.enable_flag = 0;
 }
 
-void SuperCapSend(SuperCapInstance *instance, uint8_t *data)
+void SuperCapSetPowerLimit(SuperCapInstance *instance, float power_limit)
 {
-    memcpy(instance->can_ins->tx_buff, data, 8);
-    CANTransmit(instance->can_ins, 1);
+    instance->tx_data.power_limit = power_limit;
 }
 
-SuperCap_Msg_s SuperCapGet(SuperCapInstance *instance)
+void SuperCapRxCallback(CAN_RxHeaderTypeDef rx_config, uint8_t *recv_data)
 {
-    return instance->cap_msg_s;
-}
-
-void SuperCap_decode(uint8_t* can_rx_data,uint32_t superID)
-{
-    superCap_watchdog=500;
-    switch(superID)
+    memcpy(supercap->can_instance->rx_buff, recv_data, rx_config.DLC);
+    DaemonReload(supercap->daemon_instance);
+    uint16_t temp;
+    uint8_t *rx_buffer = supercap->can_instance->rx_buff;
+    switch (rx_config.StdId)
     {
-            case 0x600:
-                pm01_od.ccr=(uint16_t)can_rx_data[0] << 8 | can_rx_data[1];
+        case 0x610:
+            temp = (uint16_t)rx_buffer[0] << 8 | rx_buffer[1];
+            supercap->rx_data.status.status = temp;
+            temp = (uint16_t)rx_buffer[2] << 8 | rx_buffer[3];
+            supercap->rx_data.error_code = temp;
             break;
-            case 0x601:
-                pm01_od.p_set = (uint16_t)can_rx_data[0] << 8 | can_rx_data[1];	
+
+        case 0x611:
+            temp = (uint16_t)rx_buffer[0] << 8 | rx_buffer[1];
+            supercap->rx_data.input_power = (float)temp / 100.0f;
+            temp = (uint16_t)rx_buffer[2] << 8 | rx_buffer[3];
+            supercap->rx_data.input_vol = (float)temp / 100.0f;
+            temp = (uint16_t)rx_buffer[4] << 8 | rx_buffer[5];
+            supercap->rx_data.input_cur = (float)temp / 100.0f;
             break;
-            case 0x602:
-                pm01_od.v_set=(uint16_t)can_rx_data[0] << 8 | can_rx_data[1];	
+
+        case 0x612:
+            temp = (uint16_t)rx_buffer[0] << 8 | rx_buffer[1];
+            supercap->rx_data.output_power = (float)temp / 100.0f;
+            if (supercap->rx_data.output_power > 200.0f) supercap->rx_data.output_power = 0.0f;
+            temp = (uint16_t)rx_buffer[2] << 8 | rx_buffer[3];
+            supercap->rx_data.output_vol = (float)temp / 100.0f;
+            temp = (uint16_t)rx_buffer[4] << 8 | rx_buffer[5];
+            supercap->rx_data.output_cur = (float)temp / 100.0f;
             break;
-            case 0x603:
-                pm01_od.i_set = (uint16_t)can_rx_data[0] << 8 | can_rx_data[1];	
+
+        case 0x613:
+            temp = (uint16_t)rx_buffer[0] << 8 | rx_buffer[1];
+            supercap->rx_data.temperature = (float)temp / 10.0f;
+            temp = (uint16_t)rx_buffer[2] << 8 | rx_buffer[3];
+            supercap->rx_data.total_time = temp;
+            temp = (uint16_t)rx_buffer[4] << 8 | rx_buffer[5];
+            supercap->rx_data.run_time = temp;
             break;
-            case 0x610:
-                pm01_od.sta_code.all  = (uint16_t)can_rx_data[0] << 8 | can_rx_data[1];	
-                pm01_od.err_code = (uint16_t)can_rx_data[2] << 8 | can_rx_data[3];	
-                break;
-            case 0x611:
-                pm01_od.p_in = (uint16_t)can_rx_data[0] << 8 | can_rx_data[1];	
-                pm01_od.v_in  = (uint16_t)can_rx_data[2] << 8 | can_rx_data[3];	
-                pm01_od.i_in  = (uint16_t)can_rx_data[4] << 8 | can_rx_data[5];	
-                break;
-            case 0x612:
-                pm01_od.p_out = (uint16_t)can_rx_data[0] << 8 | can_rx_data[1];	
-                pm01_od.v_out  = (uint16_t)can_rx_data[2] << 8 | can_rx_data[3];	
-                pm01_od.i_out = (uint16_t)can_rx_data[4] << 8 | can_rx_data[5];	  
-                break;
-            case 0x613:
-                pm01_od.temp = (uint16_t)can_rx_data[0] << 8 | can_rx_data[1];	
-                pm01_od.total_time = (uint16_t)can_rx_data[2] << 8 | can_rx_data[3];	
-                pm01_od.run_time = (uint16_t)can_rx_data[4] << 8 | can_rx_data[5];	
-                break;
     }
+}
+
+static void SuperCapLostCallback(DaemonInstance *daemon_instance)
+{
+
+}
+
+uint8_t SuperCapIsOnline(SuperCapInstance *instance)
+{
+    return DaemonIsOnline(instance->daemon_instance);
+}
+
+SuperCapInstance *SuperCapInit(SuperCap_Init_Config_s *config)
+{
+    if(!supercap)
+    {
+        supercap = (SuperCapInstance *)malloc(sizeof(SuperCapInstance));
+        memset(supercap, 0, sizeof(SuperCapInstance));
+
+        config->can_config.can_module_callback = NULL;
+        config->can_config.id = (void *)supercap;
+        supercap->can_instance = CANRegister(&config->can_config);
+
+        config->daemon_config.callback = SuperCapLostCallback;
+        config->daemon_config.init_count = 2000;
+        config->daemon_config.owner_id = (void *)supercap;
+        config->daemon_config.reload_count = 1000;
+        supercap->daemon_instance = DaemonRegister(&config->daemon_config);
+
+        CAN_FilterTypeDef filter_config = {
+            .FilterMode = CAN_FILTERMODE_IDMASK,
+            .FilterBank = 13,
+            .FilterScale = CAN_FILTERSCALE_16BIT,
+            .FilterFIFOAssignment = CAN_FILTER_FIFO0,
+            .FilterActivation = CAN_FILTER_ENABLE,
+            .SlaveStartFilterBank = 14,
+            .FilterMaskIdHigh = 0x7EC << 5,
+            .FilterMaskIdLow = 0x000,
+            .FilterIdHigh = 0x600 << 5,
+            .FilterIdLow = 0x000,
+        };
+        HAL_CAN_ConfigFilter(supercap->can_instance->can_handle, &filter_config);
+        
+        state = STATE_CMD_SET;
+    }
+    return supercap;
+}
+
+void SuperCapTask(void)
+{
+    uint16_t power_limit;
+    switch (state)
+    {
+        case STATE_CMD_SET:
+            can_tx_data[0] = 0x00;
+            can_tx_data[1] = (uint8_t)supercap->tx_data.enable_flag;
+            break;
+        case STATE_POWER_SET:
+            power_limit = (uint16_t)(supercap->tx_data.power_limit * 100.0f);
+            can_tx_data[0] = (uint8_t)(power_limit >> 8);
+            can_tx_data[1] = (uint8_t)(power_limit & 0xFF);
+            break;
+        case STATE_STATUS_READ:
+        case STATE_INPUT_READ:
+        case STATE_OUTPUT_READ:
+        case STATE_OTHER_READ:
+            memset(can_tx_data, 0, sizeof(can_tx_data));
+            break;
+    }
+    uint32_t tx_mailbox;
+    HAL_CAN_AddTxMessage(supercap->can_instance->can_handle, &tx_header_table[(size_t)state], can_tx_data, &tx_mailbox);
+    
+    state = (state + 1) % 8;
+    if (state == STATE_CURRENT_SET || state == STATE_VOLTAGE_SET) state = STATE_STATUS_READ;//跳过电流设置和电压设置
+}
+
+float SuperCapGetChassisVoltage(SuperCapInstance *instance)
+{
+    return instance->rx_data.output_vol;
 }
