@@ -181,8 +181,8 @@ void ShootInit()
     // 拨盘电机
     Motor_Init_Config_s loader_config = {
         .can_init_config = {
-            .can_handle = &hcan2,
-            .tx_id      = 1,
+            .can_handle = &hcan1,
+            .tx_id      = 6,
         },
         .controller_param_init_config = {
             .angle_PID = {
@@ -385,7 +385,7 @@ void ShootTask()
     
     // 从cmd获取控制数据
     SubGetMessage(shoot_sub, &shoot_cmd_recv);
-    shoot_cmd_recv.shoot_rate = 10;
+    shoot_cmd_recv.shoot_rate = 5;
     // shoot_cmd_recv.friction_mode = friction_text_mode;
     // shoot_cmd_recv.shoot_mode    = shoot_text_mode;
     // loadmode                     = shoot_cmd_recv.load_mode;
@@ -505,7 +505,7 @@ void ShootTask()
             // }
             if(last_load_mode == LOAD_STOP)
             {
-                if(((load_count-2) * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset
+                if(((load_count-1) * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset
                 - loader->measure.total_angle)<0)
                     load_count++ ;
             }
@@ -572,7 +572,7 @@ void ShootTask()
             // DJIMotorOuterLoop(loader, SPEED_LOOP);
             if((DWT_GetTimeline_ms() - load_time_ms) > cool_down_time)
             {
-                if(((load_count-2) * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset
+                if(((load_count-1) * LOADER_ANGLE_PER_BULLET + loader_initial_offset + loader_offset + loader_pitch_offset
                 - loader->measure.total_angle)<0)
                     load_count++ ;
                 load_time_ms = DWT_GetTimeline_ms();

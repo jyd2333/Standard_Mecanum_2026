@@ -21,7 +21,7 @@
 /* 开发板类型定义,烧录时注意不要弄错对应功能;修改定义后需要重新编译,只能存在一个定义! */
 //#define ONE_BOARD // 单板控制整车
 #define CHASSIS_BOARD //底盘板
-//#define GIMBAL_BOARD  //云台板
+// #define GIMBAL_BOARD  //云台板
 #define VISION_USE_VCP // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
 // #define BIG_HEAD
@@ -61,7 +61,7 @@
 #define RADIUS_WHEEL           77   // 轮子半径
 #define REDUCTION_RATIO_WHEEL  19.0f // 电机减速比,因为编码器量测的是转子的速度而不是输出轴的速度故需进行转换
 
-#define CHASSIS_SPEED          20000 // 键盘控制不限功率时底盘最大移动速度
+#define CHASSIS_SPEED          60000 // 键盘控制不限功率时底盘最大移动速度
 #define YAW_K                  0.00025f
 #define PITCH_K                0.000004f
 

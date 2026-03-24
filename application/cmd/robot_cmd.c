@@ -720,21 +720,21 @@ static void RemoteControlSet()
 
     if (rc_update_flag == 1)
     {
-        // if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
-        // {
-        //     if (gimbal_cmd_send.nuc_mode != version_control)
-        //         gimbal_cmd_send.nuc_mode = version_control;
-        //     else
-        //         gimbal_cmd_send.nuc_mode = none_version_control;
-        // }
-
         if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
         {
-            if (SuperCap_flag_from_user == SUPERCAP_UNUSE)
-                SuperCap_flag_from_user = SUPERCAP_USE;
+            if (gimbal_cmd_send.nuc_mode != version_control)
+                gimbal_cmd_send.nuc_mode = version_control;
             else
-                SuperCap_flag_from_user = SUPERCAP_UNUSE;
+                gimbal_cmd_send.nuc_mode = none_version_control;
         }
+
+        // if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
+        // {
+        //     if (SuperCap_flag_from_user == SUPERCAP_UNUSE)
+        //         SuperCap_flag_from_user = SUPERCAP_USE;
+        //     else
+        //         SuperCap_flag_from_user = SUPERCAP_UNUSE;
+        // }
         // gimbal_cmd_send.nuc_mode = none_version_control;
         
         switch (rc_data[TEMP].rc.switch_left)
@@ -934,7 +934,7 @@ static void GimbalSet()
     // {
         gimbal_cmd_send.gimbal_mode = GIMBAL_GYRO_MODE;
         yaw_control -= rc_data[TEMP].mouse.x / 500.0f;
-        pitch_control += rc_data[TEMP].mouse.y / 1000.0f;
+        pitch_control += rc_data[TEMP].mouse.y / 15000.0f;
     // }
     pitch_vision_delta=gimbal_cmd_send.pitch_version/freequence;
     static float pitch_rotato_vision,yaw_rotato_vision;

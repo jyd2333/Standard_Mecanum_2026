@@ -652,8 +652,8 @@ void ChassisTask()
         DJIMotorEnable(motor_rf);
         DJIMotorEnable(motor_lb);
         DJIMotorEnable(motor_rb);
-        // DMMotorEnable1(joint_l);
-        // DMMotorEnable1(joint_r);
+        DMMotorEnable1(joint_l);
+        DMMotorEnable1(joint_r);
     }
 
     static float offset_angle;
@@ -680,8 +680,8 @@ void ChassisTask()
             // 底盘不旋转,但维持全向机动,一般用于调整云台姿态
             chassis_cmd_recv.wz = 0;
             powerLim=0;
-            cos_theta = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
-            sin_theta = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            cos_theta = arm_cos_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            sin_theta = arm_sin_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode  = LEG_ACTIVE_SUSPENSION;
             ramp_init(&rotate_ramp, 250);
             break;
@@ -689,8 +689,8 @@ void ChassisTask()
             powerLim=0;            
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
             // chassis_cmd_recv.wz = 0;
-            cos_theta = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
-            sin_theta = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            cos_theta = arm_cos_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            sin_theta = arm_sin_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode  = LEG_ACTIVE_SUSPENSION;
             ramp_init(&rotate_ramp, 250);
             break;
@@ -714,8 +714,8 @@ void ChassisTask()
             current_speed_vw = chassis_vw;
 
             chassis_cmd_recv.wz = chassis_vw;
-            cos_theta           = arm_cos_f32((chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD); // 矫正小陀螺偏心
-            sin_theta           = arm_sin_f32((chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD);
+            cos_theta           = arm_cos_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD); // 矫正小陀螺偏心
+            sin_theta           = arm_sin_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD);
             chassis_cmd_recv.vx *= 0.6;
             chassis_cmd_recv.vy *= 0.6;
             leg_mode            = LEG_ACTIVE_SUSPENSION;
@@ -723,8 +723,8 @@ void ChassisTask()
             
         case CHASSIS_REVERSE_ROTATE:
             chassis_cmd_recv.wz = -5000;
-            cos_theta           = arm_cos_f32((chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD); // 矫正小陀螺偏心
-            sin_theta           = arm_sin_f32((chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD);
+            cos_theta           = arm_cos_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD); // 矫正小陀螺偏心
+            sin_theta           = arm_sin_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD);
             leg_mode            = LEG_ACTIVE_SUSPENSION;
             break;
         case CHASSIS_CLIMB:
@@ -732,8 +732,8 @@ void ChassisTask()
         case CHASSIS_CLIMB_WITH_PUSH:
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
             // chassis_cmd_recv.wz = 0;
-            cos_theta           = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
-            sin_theta           = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            cos_theta           = arm_cos_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            sin_theta           = arm_sin_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode            = LEG_CLIMB;
             ramp_init(&rotate_ramp, 250);
             switch(chassis_cmd_recv.chassis_mode)
@@ -763,8 +763,8 @@ void ChassisTask()
         case CHASSIS_CLIMB_RETRACT:
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
             // chassis_cmd_recv.wz = 0;
-            cos_theta           = arm_cos_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
-            sin_theta           = arm_sin_f32(chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            cos_theta           = arm_cos_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+            sin_theta           = arm_sin_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode            = LEG_CLIMB_RETRACT;
             ramp_init(&rotate_ramp, 250);
             break;
@@ -811,6 +811,7 @@ void ChassisTask()
             Chassis_Follow_PID.Kp = 50;
             break;
         default:
+            dipAngle = 0;
             joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             break;
