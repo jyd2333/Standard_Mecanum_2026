@@ -48,7 +48,7 @@ void SuperCapRxCallback(CAN_RxHeaderTypeDef rx_config, uint8_t *recv_data)
     {
         case 0x610:
             temp = (uint16_t)rx_buffer[0] << 8 | rx_buffer[1];
-            supercap->rx_data.status.status = temp;
+            supercap->rx_data.status.all = temp;
             temp = (uint16_t)rx_buffer[2] << 8 | rx_buffer[3];
             supercap->rx_data.error_code = temp;
             break;
@@ -153,7 +153,7 @@ void SuperCapTask(void)
     uint32_t tx_mailbox;
     HAL_CAN_AddTxMessage(supercap->can_instance->can_handle, &tx_header_table[(size_t)state], can_tx_data, &tx_mailbox);
     
-    state = (state + 1) % 8;
+    state = (state + 1) % (sizeof(tx_header_table) / sizeof(CAN_TxHeaderTypeDef));
     if (state == STATE_CURRENT_SET || state == STATE_VOLTAGE_SET) state = STATE_STATUS_READ;//跳过电流设置和电压设置
 }
 

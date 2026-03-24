@@ -4,6 +4,11 @@
 #include "bsp_can.h"
 #include "daemon.h"
 
+#define SUPERCAP_MAX_VOLTAGE 24.0f
+#define SUPERCAP_MIN_VOLTAGE 16.0f
+#define SUPERCAP_HIGHER_THRESHOLD_VOLTAGE 22.0f
+#define SUPERCAP_LOWER_THRESHOLD_VOLTAGE 16.0f
+
 typedef enum
 {
     SUPERCAP_DISABLE = 0,
@@ -16,7 +21,7 @@ typedef struct
     float power_limit;
 }SuperCap_Tx_Data_s;
 
-typedef struct 
+typedef union
 {
     struct 
     {
@@ -31,7 +36,7 @@ typedef struct
         uint16_t revd:  7;  /*!< bit8-14 保留     */
         uint16_t flt:   1;  /*!< bit15   故障     */
     };
-    uint16_t status;
+    uint16_t all;
 }SuperCap_Status_u;
 
 typedef enum

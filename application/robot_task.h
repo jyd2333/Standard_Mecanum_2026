@@ -115,8 +115,10 @@ __attribute__((noreturn)) void _DaemonTask(void *argument)
 {
     static uint32_t Daemon_time;
 
+    UI_Init();
     for (;;) {
         DaemonTask();
+        UIDynamicRefresh();
         Daemon_dt = DWT_GetDeltaT(&Daemon_time);
         osDelay(1);
     }

@@ -122,33 +122,14 @@ static void UI_StaticInit()
     UICharDraw(&Char_State[3], "sc3", UI_Graph_ADD, 7, UI_Color_Orange, 23, 4, 1270, 125, "Cap");
     UICharRefresh(&referee_data_for_ui->referee_id, Char_State[3]);
     UICircleDraw(&state_circle[3], "oc3", UI_Graph_ADD, 9, UI_Color_White, 10, 1300, 160, 10);
-    UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_ADD, 9, UI_Color_Green, 273, 300, 7, 956, 542, 383, 386);
-    // UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_ADD, 9, UI_Color_Green, 273, 311, 7, 962, 542, 383, 386);
-    // 电容电压
-    // sprintf(Char_State[4].show_Data, "Voltage");
-    // UICharDraw(&Char_State[4], "sc4", UI_Graph_ADD, 7, UI_Color_White, 20, 3, 25+700, 820-120, "Voltage");
-    // UICharRefresh(&referee_data_for_ui->referee_id, Char_State[4]);
-    // **参数：*graph Graph_Data类型变量指针，用于存放图形数据
-    //     graphname[3]   图片名称，用于标识更改
-    //     Graph_Operate   图片操作，见头文件
-    //     Graph_Layer    图层0-9
-    //     Graph_Color    图形颜色
-    //     Graph_Width    图形线宽
-    //     Start_x、Start_y  起点xy坐标
-    //     End_x、End_y   终点xy坐标
-    // UILineDraw(&shoot_line[5], "ol5", UI_Graph_ADD, 9, UI_Color_Green, 5, 725, 650, 850, 650);
-    // UILineDraw(&shoot_line[4], "ol4", UI_Graph_ADD, 9, UI_Color_Purplish_red, 5, 725, 640, 725+ui_cmd_recv.SuperCap_voltage/24.0f*125.0f, 640);
-    // graphname[3]   图片名称，用于标识更改
-    // Graph_Operate   图片操作，见头文件
-    // Graph_Layer    图层0-9
-    // Graph_Color    图形颜色
-    // Graph_Size     字号
-    // Graph_Digit    小数位数
-    // Graph_Width    图形线宽
-    // Start_x、Start_y    开始坐标
-    // radius=a&0x3FF;   a为浮点数乘以1000后的32位整型数
-    // end_x=(a>>10)&0x7FF;
-    // end_y=(a>>21)&0x7FF;
+
+    UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_ADD, 9, UI_Color_Green, 271, 273, 7, 956, 542, 383, 386);
+
+    UIFloatDraw(&total_voltage, "of0", UI_Graph_ADD, 9, UI_Color_Green, 15, 3, 3, 740, 910, 24000);
+    UIFloatDraw(&Cap_voltage, "of5", UI_Graph_ADD, 9, UI_Color_Pink, 15, 3, 3, 555, 550, (int32_t)(ui_cmd_recv.supercap_voltage * 1000));
+
+    //底盘功率
+
     UIFloatDraw(&total_voltage, "of0", UI_Graph_ADD, 9, UI_Color_Green, 10, 0, 4, 860, 660, 24000);
     // UIFloatDraw(&Cap_voltage, "of1", UI_Graph_ADD, 9, UI_Color_Pink, 12, 1, 4, 860, 640, allow_shoot_heat(getTotal_heat()));
     // **参数：*graph Graph_Data类型变量指针，用于存放图形数据
@@ -196,12 +177,7 @@ void UIDynamicRefresh()
     } else {
         UICircleDraw(&state_circle[0], "oc0", UI_Graph_Change, 9, UI_Color_White, 10, 620, 160, 10);
     }
-    // 打符(单发)
-    // if (ui_cmd_recv.rune_mode == 1) {
-    //     UICircleDraw(&state_circle[1], "oc1", UI_Graph_Change, 9, UI_Color_Green, 10, 800, 160, 10);
-    // } else {
-    //     UICircleDraw(&state_circle[1], "oc1", UI_Graph_Change, 9, UI_Color_White, 10, 800, 160, 10);
-    // }
+    
     // 摩擦轮
     if (ui_cmd_recv.friction_mode == FRICTION_ON) {
         UICircleDraw(&state_circle[2], "oc2", UI_Graph_Change, 9, UI_Color_Main, 10, 960, 160, 10);
@@ -209,41 +185,29 @@ void UIDynamicRefresh()
         UICircleDraw(&state_circle[2], "oc2", UI_Graph_Change, 9, UI_Color_White, 10, 960, 160, 10);
     }
     // 电容&电容电压
-    UICircleDraw(&state_circle[3], "oc3", UI_Graph_Change, 9, UI_Color_Orange, 10, 1300, 160, 10);
-    UIFloatDraw(&Cap_voltage, "of5", UI_Graph_ADD, 8, UI_Color_Pink, 12, 1, 4, 860, 640, (ui_cmd_recv.SuperCap_voltage)*1000);
-    // UILineDraw(&shoot_line[4], "ol4", UI_Graph_Change, 9, UI_Color_Purplish_red, 5, 725, 640, 725+ui_cmd_recv.SuperCap_voltage/24.0f*125.0f, 640);
-    if(ui_cmd_recv.SuperCap_voltage>=16){
-        if(ui_cmd_recv.SuperCap_voltage>=16.5){
-             UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Green, 273, 273+40*(ui_cmd_recv.SuperCap_voltage-15.5)/(Super_Cap_Charge_Voltage_MAX-15.5), 7, 956, 542, 383, 386);
-        }
-         else{
-            UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Pink, 273, 273+40*(ui_cmd_recv.SuperCap_voltage-15.5)/(Super_Cap_Charge_Voltage_MAX-15.5), 7, 956, 542, 383, 386);
-        }
+    if (ui_cmd_recv.cap_online_flag == 0)
+    {
+        UICircleDraw(&state_circle[3], "oc3", UI_Graph_Change, 9, UI_Color_Pink, 10, 1300, 160, 10);
     }
-    else{
-        UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Pink, 273, 273+40*(16-15.5)/(Super_Cap_Charge_Voltage_MAX-15.5), 7, 956, 542, 383, 386);
+    else
+    {
+        UICircleDraw(&state_circle[3], "oc3", UI_Graph_Change, 9, UI_Color_Green, 10, 1300, 160, 10);
     }
-    // if(cap_debug>=16){
-    //     if(cap_debug>=16.5){
-    //          UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Green, 273, 273+40*(cap_debug-15.5)/(Super_Cap_Charge_Voltage_MAX-15.5), 7, 956, 542, 383, 386);
-    //     }
-    //      else{
-    //         UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Pink, 273, 273+40*(cap_debug-15.5)/(Super_Cap_Charge_Voltage_MAX-15.5), 7, 956, 542, 383, 386);
-    //     }
-    // }
-    // else{
-    //     UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Pink, 273, 273+40*(16-15.5)/(Super_Cap_Charge_Voltage_MAX-15.5), 7, 956, 542, 383, 386);
-    // }
+    
 
-
-    if (ui_cmd_recv.SuperCap_mode == SUPERCAP_USE) {
-        UICircleDraw(&state_circle[3], "oc3", UI_Graph_Change, 9, UI_Color_Main, 10, 1300, 160, 10);
-        // UIFloatDraw(&Cap_voltage, "of1", UI_Graph_Change, 9, UI_Color_Pink, 12, 1, 4, 860, 640, (ui_cmd_recv.SuperCap_voltage)*1000);
-        // UILineDraw(&shoot_line[4], "ol4", UI_Graph_Change, 9, UI_Color_Purplish_red, 5, 725, 640, 725+ui_cmd_recv.SuperCap_voltage/24.0f*125.0f, 640);
-    } else {
-        UICircleDraw(&state_circle[3], "oc3", UI_Graph_Change, 9, UI_Color_White, 10, 1300, 160, 10);
-        // UIFloatDraw(&Cap_voltage, "of1", UI_Graph_Change, 9, UI_Color_Pink, 12, 1, 4, 860, 640, (ui_cmd_recv.SuperCap_voltage)*1000);
-        // UILineDraw(&shoot_line[4], "ol4", UI_Graph_Change, 9, UI_Color_Purplish_red, 5, 725, 640, 725+ui_cmd_recv.SuperCap_voltage/24.0f*125.0f, 640);
+    if(ui_cmd_recv.supercap_voltage >= SUPERCAP_HIGHER_THRESHOLD_VOLTAGE){
+        UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Green, 271, 272 + 60 * (ui_cmd_recv.supercap_voltage - SUPERCAP_MIN_VOLTAGE) / (SUPERCAP_MAX_VOLTAGE - SUPERCAP_MIN_VOLTAGE), 7, 956, 542, 383, 386);
+    }
+    else if (ui_cmd_recv.supercap_voltage >= SUPERCAP_LOWER_THRESHOLD_VOLTAGE){
+        UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Orange, 271, 272 + 60 * (ui_cmd_recv.supercap_voltage - SUPERCAP_MIN_VOLTAGE) / (SUPERCAP_MAX_VOLTAGE - SUPERCAP_MIN_VOLTAGE), 7, 956, 542, 383, 386);
+    }
+    else if (ui_cmd_recv.supercap_voltage > SUPERCAP_LOWER_THRESHOLD_VOLTAGE)
+    {
+        UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Pink, 271, 272 + 60 * (ui_cmd_recv.supercap_voltage - SUPERCAP_MIN_VOLTAGE) / (SUPERCAP_MAX_VOLTAGE - SUPERCAP_MIN_VOLTAGE), 7, 956, 542, 383, 386);
+    }
+    else
+    {
+        UIArcDraw(&Cap_voltage_arc, "powerline", UI_Graph_Change, 9, UI_Color_Pink, 271, 272, 7, 956, 542, 383, 386);
     }
     // 本地热量
     totalheat=getTotal_heat(ui_cmd_recv.robot_level);

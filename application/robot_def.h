@@ -281,9 +281,8 @@ typedef struct
     friction_mode_e friction_mode;
     uint8_t rune_mode;
     uint8_t SuperCap_mode;           // 开关指示 未开启为1
-    float SuperCap_voltage;          // 超电电压
+    float supercap_voltage;          // 超电电压
     float Chassis_Ctrl_power;        // 底盘控制功率
-    uint16_t Cap_absorb_power_limit; // 超电吸收功率
     uint8_t cap_online_flag;
     uint16_t Chassis_power_limit;    // 底盘功率
     uint16_t Shooter_heat;              // 枪口热量
