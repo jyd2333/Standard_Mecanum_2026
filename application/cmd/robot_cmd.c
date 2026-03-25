@@ -1400,6 +1400,7 @@ DeterminRobotID();
 
     FIFO_state = FIFO_Read(&NUC_fifo,fifo_pack,NUC_RECV_SIZE,0XFF,0X0D);
    if(FIFO_state)USB_Version_devode();
+//    if(shoot_cmd_send.)
     // *nuc_can_rx=*(uint8_t*)CANCommGet(cmd_can_comm);
     //chassis_fetch_data = *(Chassis_Upload_Data_s *)CANCommGet(cmd_can_comm);
     if(FIFO_Read_chassis_ctrl(&rs485_master_fifo,chasssis_update_data,Chassis_Upload_Data_s_uart_size+3,0xff,0xfd)){

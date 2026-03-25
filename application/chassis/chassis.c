@@ -633,7 +633,8 @@ void ChassisTask()
     //chassis_cmd_recv.offset_angle=half_to_float(chassis_cmd_recv_half_float.offset_angle);
     //chassis_cmd_recv.SuperCap_flag_from_user=chassis_cmd_recv_half_float.SuperCap_flag_from_user;
     // chassis_cmd_recv.chassis_mode=chassis_rs485_recv.chassis_mode;//chassis_cmd_recv_half_float.chassis_mode;
-
+    if(referee_data_for_ui->GameRobotState.mains_power_chassis_output == 0)
+        chassis_cmd_recv.chassis_mode = CHASSIS_ZERO_FORCE;
     if (chassis_cmd_recv.chassis_mode == CHASSIS_ZERO_FORCE){ // 如果出现重要模块离线或遥控器设置为急停,让电机停止
     
         DJIMotorStop(motor_lf);
@@ -652,8 +653,8 @@ void ChassisTask()
         DJIMotorEnable(motor_rf);
         DJIMotorEnable(motor_lb);
         DJIMotorEnable(motor_rb);
-        DMMotorEnable1(joint_l);
-        DMMotorEnable1(joint_r);
+        // DMMotorEnable1(joint_l);
+        // DMMotorEnable1(joint_r);
     }
 
     static float offset_angle;
