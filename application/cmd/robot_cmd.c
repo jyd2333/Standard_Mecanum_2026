@@ -67,7 +67,7 @@ HostInstance *rs485_master_instance; // 接口
 HostInstance *rs485_slaver_instance; // 接口
 // 这里的四元数以wxyz的顺序
 static uint8_t vision_recv_data[9];  // 从视觉上位机接收的数据-绝对角度，第9个字节作为识别到目标的标志位
-uint8_t vision_send_data[32]; // 给视觉上位机发送的数据
+uint8_t vision_send_data[40]; // 给视觉上位机发送的数据
 uint8_t chasssis_ctrl_data[sizeof(Chassis_Ctrl_Cmd_s_uart)+3];
 uint8_t chasssis_update_data[sizeof(Chassis_Upload_Data_s_uart)+3];
 static Publisher_t *gimbal_cmd_pub  ;            // 云台控制消息发布者
@@ -1164,7 +1164,7 @@ void USB_Version_devode(){
     //,yaw_version;
     // static float checkNUC[2];
     // static float checkNUCCCCCC[2];
-    float fp_pitch,fp_yaw;
+    float fp_pitch,fp_yaw,pitch_vel,yaw_vel,pitch_acc,yaw_acc;
     // pitch_version_cyc=(short)(fifo_pack[1]|fifo_pack[2]<<8);
     // yaw_version_cyc=(short)(fifo_pack[3]|fifo_pack[4]<<8);
     // fp_pitch=(float)pitch_version_cyc*version_decode_to_angle;
@@ -1183,8 +1183,12 @@ void USB_Version_devode(){
     // }
 
     fire_advice = fifo_pack[1];
-    fp_pitch = uint8_to_float_manual(fifo_pack + 4);
-    fp_yaw = uint8_to_float_manual(fifo_pack + 8);
+    fp_yaw = uint8_to_float_manual(fifo_pack + 4);
+    yaw_vel = uint8_to_float_manual(fifo_pack + 8);
+    yaw_acc = uint8_to_float_manual(fifo_pack + 12);
+    fp_pitch = uint8_to_float_manual(fifo_pack + 16);
+    pitch_vel = uint8_to_float_manual(fifo_pack + 20);
+    pitch_acc = uint8_to_float_manual(fifo_pack + 24);
     if (fp_yaw != 0.0f)
     {
         gimbal_cmd_send.pitch_version = fp_pitch;
@@ -1470,17 +1474,20 @@ DeterminRobotID();
 
     //向上位机发送消息
     vision_send_data[0]=0xff; 
-    vision_send_data[1] = chassis_fetch_data_uart.color;
+    vision_send_data[1] = 1;//chassis_fetch_data_uart.color;
 
-    float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 4);//低位先行
+    float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 2);//低位先行
     yaw_reverse =  gimbal_fetch_data.gimbal_imu_data->output.INS_angle[2];
-    float_to_uint8_manual(yaw_reverse, vision_send_data + 8);
-    memcpy(&chassis_fetch_data_uart.initial_speed,&vision_send_data[26],4);
+    float_to_uint8_manual(yaw_reverse, vision_send_data + 6);
+    memcpy(vision_send_data + 10, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_quat[0], 4);
+    memcpy(&vision_send_data[26], &chassis_fetch_data_uart.initial_speed,4);
+    memcpy(vision_send_data + 30, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[1],8);
+    // memcpy(&gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],vision_send_data + 30,4);
     static uint8_t nuc_cnt = 25;
     nuc_cnt = (nuc_cnt + 1) % 25 + 25;
-    vision_send_data[30]=nuc_cnt;
-    vision_send_data[31]=0x0D;
-    HostSend(host_instance, vision_send_data, 32);
+    vision_send_data[38]=nuc_cnt;
+    vision_send_data[39]=0x0D;
+    HostSend(host_instance, vision_send_data, 40);
 
 #endif
     // 从其他应用获取回传数据
