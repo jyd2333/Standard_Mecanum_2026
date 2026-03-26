@@ -1143,7 +1143,7 @@ static void MouseKeySet()
     ShootSet();
     KeyGetMode();
     
-    PitchAngle_ActiveLimit();
+    // PitchAngle_ActiveLimit();
     RobotReset(); // 机器人复位处理
 }
 static float  getkey_time= 0;
@@ -1176,7 +1176,7 @@ uint8_t ifTrueVision(float angle,uint8_t mode){
 
  short pitch_version_cyc,yaw_version_cyc;
  float pitchChange,yawChange;
-
+volatile static float distance;
 #define version_decode_to_angle 0.0439453125f
 void USB_Version_devode(){
     //,yaw_version;
@@ -1203,10 +1203,17 @@ void USB_Version_devode(){
     fire_advice = fifo_pack[1];
     fp_pitch = uint8_to_float_manual(fifo_pack + 4);
     fp_yaw = uint8_to_float_manual(fifo_pack + 8);
+    distance = uint8_to_float_manual(fifo_pack + 12);
     if (fp_yaw != 0.0f)
     {
         gimbal_cmd_send.pitch_version = fp_pitch;
         gimbal_cmd_send.yaw_version = fp_yaw;
+    }
+
+    if (distance == -1)
+    {
+        gimbal_cmd_send.pitch_version = pitch_control;
+        gimbal_cmd_send.yaw_version = yaw_control;
     }
     
     // if(ifTrueVision(fp_pitch,0)){
