@@ -704,6 +704,14 @@ float low_pass_filiter(float input){
     last=output;
     return output;
 }
+
+void gimbal_limit(void)
+{
+    if(pitch_control > 0.25) pitch_control = 0.25;
+    if(pitch_control < -0.3) pitch_control = -0.3;
+    if(gimbal_cmd_send.pitch_version > 0.25) gimbal_cmd_send.pitch_version = 0.25;
+    if(gimbal_cmd_send.pitch_version < -0.3) gimbal_cmd_send.pitch_version = -0.3;
+}
 //float pitch_control_max,pitch_control_min;
 /**
  * @brief 控制输入为遥控器(调试时)的模式和控制量设置
@@ -844,7 +852,8 @@ static void RemoteControlSet()
 //     // // 云台参数
 //     // 云台软件限位
 
-    PitchAngle_ActiveLimit();// PITCH限位
+    // PitchAngle_ActiveLimit();// PITCH限位
+    gimbal_limit();
     YawControlProcess();
     
      gimbal_cmd_send.yaw   = yaw_control;
@@ -933,8 +942,16 @@ static void GimbalSet()
     // else
     // {
         gimbal_cmd_send.gimbal_mode = GIMBAL_GYRO_MODE;
-        yaw_control -= rc_data[TEMP].mouse.x / 500.0f;
-        pitch_control += rc_data[TEMP].mouse.y / 15000.0f;
+        if(gimbal_cmd_send.nuc_mode == none_version_control)
+        {
+            yaw_control -= rc_data[TEMP].mouse.x / 500.0f;
+            pitch_control += rc_data[TEMP].mouse.y / 15000.0f;
+        }
+        else
+        {
+            yaw_control = gimbal_cmd_send.yaw_version;
+            pitch_control = gimbal_cmd_send.pitch_version;
+        }
     // }
     pitch_vision_delta=gimbal_cmd_send.pitch_version/freequence;
     static float pitch_rotato_vision,yaw_rotato_vision;
@@ -965,6 +982,7 @@ static void GimbalSet()
     // if(fabs(gimbal_cmd_send.pitch_version)<16)pitch_control-=PIDCalculate(&PITCH_version_PID,gimbal_cmd_send.pitch_version,0);
     // if(fabs(gimbal_cmd_send.yaw_version)<20)yaw_control-=PIDCalculate(&YAW_version_PID,gimbal_cmd_send.yaw_version,0);
     YawControlProcess();
+    gimbal_limit();
     gimbal_cmd_send.yaw   = yaw_control;
     gimbal_cmd_send.pitch = pitch_control;
 }
@@ -1426,7 +1444,7 @@ DeterminRobotID();
     } 
     else {
         RemoteControlSet();
-        PitchAngleLimit();
+        // PitchAngleLimit();
     }
     // 根据gimbal的反馈值计算云台和底盘正方向的夹角,不需要传参,通过static私有变量完成
     // gimbal_fetch_data.yaw_motor_single_round_angle=chassis_fetch_data_uart.yaw_motor_single_round_angle;

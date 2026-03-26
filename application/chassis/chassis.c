@@ -646,7 +646,10 @@ void ChassisTask()
         HAL_GPIO_WritePin(GPIOE, GPIO_PIN_9, GPIO_PIN_RESET);
         HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_RESET);
         // HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
-
+        motor_lf->motor_controller.speed_PID.MaxOut = 0;
+        motor_rf->motor_controller.speed_PID.MaxOut = 0;
+        motor_lb->motor_controller.speed_PID.MaxOut = 0;
+        motor_rb->motor_controller.speed_PID.MaxOut = 0;
 
     } else { // 正常工作
         DJIMotorEnable(motor_lf);
@@ -655,6 +658,10 @@ void ChassisTask()
         DJIMotorEnable(motor_rb);
         // DMMotorEnable1(joint_l);
         // DMMotorEnable1(joint_r);
+        motor_lf->motor_controller.speed_PID.MaxOut = 16000;
+        motor_rf->motor_controller.speed_PID.MaxOut = 16000;
+        motor_lb->motor_controller.speed_PID.MaxOut = 16000;
+        motor_rb->motor_controller.speed_PID.MaxOut = 16000;
     }
 
     static float offset_angle;
