@@ -708,9 +708,9 @@ float low_pass_filiter(float input){
 void gimbal_limit(void)
 {
     if(pitch_control > 0.25) pitch_control = 0.25;
-    if(pitch_control < -0.3) pitch_control = -0.3;
+    if(pitch_control < -0.35) pitch_control = -0.35;
     if(gimbal_cmd_send.pitch_version > 0.25) gimbal_cmd_send.pitch_version = 0.25;
-    if(gimbal_cmd_send.pitch_version < -0.3) gimbal_cmd_send.pitch_version = -0.3;
+    if(gimbal_cmd_send.pitch_version < -0.35) gimbal_cmd_send.pitch_version = -0.35;
 }
 //float pitch_control_max,pitch_control_min;
 /**
