@@ -21,6 +21,7 @@ static Subscriber_t *gimbal_sub;                  // cmd?????????????
 static Gimbal_Upload_Data_s gimbal_feedback_data; // ?????cmd??????????
 static Gimbal_Ctrl_Cmd_s gimbal_cmd_recv;         // ????cmd????????
 float pitch_current_feedforward,K_pitch_current_feedforward,B_pitch_current_feedforward;
+static float pitch_speed_feedforward = 0;
 //static float yaw_angle_imu,yaw_gyro_imu;
 extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
 float yaw_gyro_twoboard=0,yaw_current_feedforward;
@@ -101,7 +102,7 @@ void GimbalInit()
                 .MaxOut = 100,
             },
             .speed_PID = {
-                .Kp            = 1200, // 18000, // 10500,//1000,//10000,// 11000
+                .Kp            = 2500, // 18000, // 10500,//1000,//10000,// 11000
                 .Ki            = 0,    // 0
                 .Kd            = 10,    // 10, // 30
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_OutputFilter,
@@ -188,12 +189,13 @@ void GimbalInit()
                 .DeadBand = 0,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit,
                 .IntegralLimit = 1.5,
-                .MaxOut = 3,
+                .MaxOut = 2,
             },
             //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
              .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[0],  //等待修改   
             // ??????????????,????,ins_task.md??c??bodyframe?????
-            .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[1],
+            .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[0],
+            .speed_feedforward_ptr = &pitch_speed_feedforward,
             // .current_feedforward_ptr = &pitch_tor_feedforward,
         },
         .controller_setting_init_config = {
@@ -202,8 +204,8 @@ void GimbalInit()
             .outer_loop_type       = ANGLE_LOOP,
             .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
-            .feedback_reverse_flag = FEEDBACK_DIRECTION_REVERSE,
-            // .feedforward_flag      = CURRENT_FEEDFORWARD,
+            .feedback_reverse_flag = FEEDBACK_DIRECTION_NORMAL,
+            .feedforward_flag      = SPEED_FEEDFORWARD,
             .control_range = {
                 .P_max = 12.5,
                 .V_max = 30,
@@ -346,6 +348,7 @@ uint16_t fpv_count=0;
 float fpv_pitch_up=0,fpv_pitch_down=0,telescope_up=0,telescope_down=0;
 extern uint8_t telescope_pos ;//0:normal 1:zoom
 extern uint8_t fpv_pos ;//0:normal 1:lob
+extern float pitch_vel;
 void GimbalTask()
 {
     // ??????????????
@@ -436,6 +439,7 @@ void GimbalTask()
     // pitch_tor_feedforward = 0.42146 * cos(1.43 + gimbal_IMU_data->output.INS_angle[0]);
     // pitch_tor_feedforward = 
     // pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
+   
     pitch_gyro_measure =  gimbal_IMU_data->INS_data.INS_gyro[1];
     switch (gimbal_cmd_recv.gimbal_mode) {
         // ??
@@ -443,10 +447,12 @@ void GimbalTask()
             DMMotorStop(pitch_motor);
             pitch_motor->motor_controller.speed_PID.Iout = 0;
             pitch_motor->motor_controller.angle_PID.Iout = 0;
+             pitch_speed_feedforward = 0;
             break;
         // ?????????????,???????yaw?????offset??????????????????
         case GIMBAL_GYRO_MODE: // ?????????????
             DMMotorEnable1(pitch_motor);
+
             // DJIMotorChangeFeed(pitch_motor,SPEED_LOOP, OTHER_FEED);
             // DJIMotorChangeFeed(pitch_motor,ANGLE_LOOP, OTHER_FEED);
             // DJIMotorOuterLoop(pitch_motor, ANGLE_LOOP);
@@ -456,11 +462,13 @@ void GimbalTask()
             {
                 // DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch_version);
                 pitch_limit(gimbal_cmd_recv.pitch_version);
+                pitch_speed_feedforward = pitch_vel;
             }
             else
             {
                 // DJIMotorSetRef(pitch_motor,pitch_offset + gimbal_cmd_recv.pitch);
                 pitch_limit(gimbal_cmd_recv.pitch);
+                pitch_speed_feedforward = 0;
             }
             // DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_test);
             // DJIMotorSetRef(telescope_motor,telescope_test);
@@ -481,6 +489,7 @@ void GimbalTask()
         default:
             break;
     } 
+    // pitch_motor->motor_controller.other_speed_feedback_ptr = &pitch_speed_feedforward;
     #endif // !BIG_HEAD
     #ifdef BIG_HEAD
     pitch_current_feedforward=-exp((352-gimbal_IMU_data->output.INS_angle_deg[0])/40);

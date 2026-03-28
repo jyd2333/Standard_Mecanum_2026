@@ -15,13 +15,13 @@
 #include "ins_task.h"
 #include "master_process.h"
 #include "stdint.h"
-#define NUC_RECV_SIZE 32
+#define NUC_RECV_SIZE 28
 #define Chassis_Ctrl_Cmd_s_uart_size sizeof(Chassis_Ctrl_Cmd_s_uart)
 #define Chassis_Upload_Data_s_uart_size sizeof(Chassis_Upload_Data_s_uart)
 /* 开发板类型定义,烧录时注意不要弄错对应功能;修改定义后需要重新编译,只能存在一个定义! */
 //#define ONE_BOARD // 单板控制整车
-#define CHASSIS_BOARD //底盘板
-// #define GIMBAL_BOARD  //云台板
+// #define CHASSIS_BOARD //底盘板
+#define GIMBAL_BOARD  //云台板
 #define VISION_USE_VCP // 使用虚拟串口发送视觉数据
 // #define VISION_USE_UART // 使用串口发送视觉数据
 // #define BIG_HEAD
@@ -84,8 +84,8 @@
 #define BMI088_AMBIENT_TEMPERATURE 25.0f
 // 设置陀螺仪数据相较于云台的yaw,pitch,roll的方向
 #define BMI088_BOARD_INSTALL_SPIN_MATRIX \
-    {0.0f, -1.0f, 0.0f},                 \
-    {1.0f, 0.0f, 0.0f},              \
+    {-1.0f, 0.0f, 0.0f},                 \
+    {0.0f, -1.0f, 0.0f},              \
     {0.0f, 0.0f, 1.0f}
 
 #define INS_YAW_ADDRESS_OFFSET   2 // 陀螺仪数据相较于云台的yaw的方向

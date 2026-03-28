@@ -19,6 +19,7 @@
 #include "super_cap.h"
 #include "AHRS_MiddleWare.h"
 #include "rm_referee.h"
+#include "crc_ref.h"
 // bsp
 #include "bsp_dwt.h"
 #include "bsp_log.h"
@@ -43,6 +44,7 @@
 #define PITCH_LIMIT_ANGLE_DOWN (PITCH_POS_MIN_ECD * ECD_ANGLE_COEF_DJI) // 云台竖直方向最小角度 0-360
 #endif
 int signl=0;
+    float p[4];
 /* cmd应用包含的模块实例指针和交互信息存储*/
 #ifdef GIMBAL_BOARD // 对双板的兼容,条件编译
 #include "can_comm.h"
@@ -67,7 +69,7 @@ HostInstance *rs485_master_instance; // 接口
 HostInstance *rs485_slaver_instance; // 接口
 // 这里的四元数以wxyz的顺序
 static uint8_t vision_recv_data[9];  // 从视觉上位机接收的数据-绝对角度，第9个字节作为识别到目标的标志位
-uint8_t vision_send_data[32]; // 给视觉上位机发送的数据
+uint8_t vision_send_data[43]; // 给视觉上位机发送的数据
 uint8_t chasssis_ctrl_data[sizeof(Chassis_Ctrl_Cmd_s_uart)+3];
 uint8_t chasssis_update_data[sizeof(Chassis_Upload_Data_s_uart)+3];
 static Publisher_t *gimbal_cmd_pub  ;            // 云台控制消息发布者
@@ -172,6 +174,25 @@ uint16_t float_to_half(float f) {
     uint16_t half = (sign << 15) | (half_exponent << 10) | (mantissa >> 13);
     return half;
 }
+
+void EularAngleToQuaternion(float Y, float P, float R, float *q)
+{
+    float cosPitch, cosYaw, cosRoll, sinPitch, sinYaw, sinRoll;
+    // Y /= 57.295779513f;
+    // P /= 57.295779513f;
+    // R /= 57.295779513f;
+    cosPitch = arm_cos_f32(P / 2);
+    cosYaw   = arm_cos_f32(Y / 2);
+    cosRoll  = arm_cos_f32(R / 2);
+    sinPitch = arm_sin_f32(P / 2);
+    sinYaw   = arm_sin_f32(Y / 2);
+    sinRoll  = arm_sin_f32(R / 2);
+q[0] = cosYaw * cosPitch * cosRoll + sinYaw * sinPitch * sinRoll;
+q[1] = cosYaw * cosPitch * sinRoll - sinYaw * sinPitch * cosRoll;
+q[2] = cosYaw * sinPitch * cosRoll + sinYaw * cosPitch * sinRoll;
+q[3] = sinYaw * cosPitch * cosRoll - cosYaw * sinPitch * sinRoll;
+}
+
 // 半精度浮点数转单精度浮点数
 float half_to_float(uint16_t half) {
     uint32_t sign = (half >> 15) & 0x1;           // 符号位
@@ -707,10 +728,10 @@ float low_pass_filiter(float input){
 
 void gimbal_limit(void)
 {
-    if(pitch_control > 0.25) pitch_control = 0.25;
-    if(pitch_control < -0.35) pitch_control = -0.35;
-    if(gimbal_cmd_send.pitch_version > 0.25) gimbal_cmd_send.pitch_version = 0.25;
-    if(gimbal_cmd_send.pitch_version < -0.35) gimbal_cmd_send.pitch_version = -0.35;
+    if(pitch_control > 0.4) pitch_control = 0.4;
+    if(pitch_control < -0.4) pitch_control = -0.4;
+    if(gimbal_cmd_send.pitch_version > 0.4) gimbal_cmd_send.pitch_version = 0.4;
+    if(gimbal_cmd_send.pitch_version < -0.4) gimbal_cmd_send.pitch_version = -0.4;
 }
 //float pitch_control_max,pitch_control_min;
 /**
@@ -769,7 +790,7 @@ static void RemoteControlSet()
                 }
                 else
                 {
-                    if (fire_advice == 1)
+                    if (fire_advice == 2)
                         shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
                     else
                         shoot_cmd_send.load_mode = LOAD_STOP;
@@ -843,8 +864,17 @@ static void RemoteControlSet()
     
 
 //    HeatControl();
-    pitch_control += PITCH_K* (float)rc_data[TEMP].rc.rocker_l1 ;
-    yaw_control -= /*0.05**/YAW_K * (float)rc_data[TEMP].rc.rocker_l_ ;
+    if(gimbal_cmd_send.nuc_mode == none_version_control)
+    {
+        pitch_control += PITCH_K* (float)rc_data[TEMP].rc.rocker_l1 ;
+        yaw_control -= /*0.05**/YAW_K * (float)rc_data[TEMP].rc.rocker_l_ ;
+    }
+    else
+    {
+        pitch_control = gimbal_cmd_send.pitch_version;
+        yaw_control = gimbal_cmd_send.yaw_version;
+    }
+    
     // 底盘参数
     chassis_cmd_send.vx = 70.0f * (float)rc_data[TEMP].rc.rocker_r1; // 水平方向
     chassis_cmd_send.vy = 70.0f * (float)rc_data[TEMP].rc.rocker_r_; // 竖直方向
@@ -945,7 +975,7 @@ static void GimbalSet()
         if(gimbal_cmd_send.nuc_mode == none_version_control)
         {
             yaw_control -= rc_data[TEMP].mouse.x / 500.0f;
-            pitch_control += rc_data[TEMP].mouse.y / 15000.0f;
+            pitch_control -= rc_data[TEMP].mouse.y / 15000.0f;
         }
         else
         {
@@ -1016,7 +1046,7 @@ static void ShootSet()
             }
             else
             {
-                if (fire_advice == 1)
+                if (fire_advice == 2)
                 {
                     shoot_cmd_send.load_mode = LOAD_BURSTFIRE;
                 }
@@ -1177,54 +1207,30 @@ uint8_t ifTrueVision(float angle,uint8_t mode){
  short pitch_version_cyc,yaw_version_cyc;
  float pitchChange,yawChange;
 volatile static float distance;
+float fp_pitch,fp_yaw,pitch_vel = 0;
+
 #define version_decode_to_angle 0.0439453125f
 void USB_Version_devode(){
-    //,yaw_version;
-    // static float checkNUC[2];
-    // static float checkNUCCCCCC[2];
-    float fp_pitch,fp_yaw;
-    // pitch_version_cyc=(short)(fifo_pack[1]|fifo_pack[2]<<8);
-    // yaw_version_cyc=(short)(fifo_pack[3]|fifo_pack[4]<<8);
-    // fp_pitch=(float)pitch_version_cyc*version_decode_to_angle;
-    // fp_yaw=(float)yaw_version_cyc*version_decode_to_angle;
-    // checkNUC[0]=fp_pitch;
-    // checkNUC[1]=checkNUC[0];
-    // checkNUCCCCCC[0]=fp_yaw;
-    // checkNUCCCCCC[1]=checkNUCCCCCC[0];
-    // pitchChange=fabs(checkNUC[0]-checkNUC[1]);
-    // yawChange=fabs(checkNUCCCCCC[0]-checkNUCCCCCC[1]);
-    // if(pitchChange<vision_filiter){
-    //     gimbal_cmd_send.pitch_version=fp_pitch;
-    // }
-    // if(yawChange<vision_filiter){
-    //     gimbal_cmd_send.yaw_version=fp_yaw;
-    // }
-
-    fire_advice = fifo_pack[1];
-    fp_pitch = uint8_to_float_manual(fifo_pack + 4);
-    fp_yaw = uint8_to_float_manual(fifo_pack + 8);
-    distance = uint8_to_float_manual(fifo_pack + 12);
-    if (fp_yaw != 0.0f)
-    {
-        gimbal_cmd_send.pitch_version = fp_pitch;
-        gimbal_cmd_send.yaw_version = fp_yaw;
-    }
-
-    if (distance == -1)
+    float yaw_vel,pitch_acc,yaw_acc,crc;
+    fire_advice = fifo_pack[2];
+    
+    fp_yaw = uint8_to_float_manual(fifo_pack + 3);
+    yaw_vel = uint8_to_float_manual(fifo_pack + 7);
+    yaw_acc = uint8_to_float_manual(fifo_pack + 11);
+    fp_pitch = uint8_to_float_manual(fifo_pack + 15);
+    pitch_vel = uint8_to_float_manual(fifo_pack + 19);
+    pitch_acc = uint8_to_float_manual(fifo_pack + 23);
+    crc = uint8_to_float_manual(fifo_pack + 27);
+    if (fire_advice == 0)
     {
         gimbal_cmd_send.pitch_version = pitch_control;
         gimbal_cmd_send.yaw_version = yaw_control;
     }
-    
-    // if(ifTrueVision(fp_pitch,0)){
-    //     if(fabs(fp_pitch)<10){
-    //     gimbal_cmd_send.pitch_version=fp_pitch;
-    //     }
-    // }
-    // if(ifTrueVision(fp_yaw,1)){
-    //     if(fabs(fp_pitch)<10){
-    //     gimbal_cmd_send.yaw_version=fp_yaw;}
-    // }
+    else
+    {
+        gimbal_cmd_send.pitch_version = fp_pitch;
+        gimbal_cmd_send.yaw_version = RAD_2_DEGREE * fp_yaw;
+    }
 }
 
 uint8_t p_data[52];
@@ -1423,7 +1429,7 @@ DeterminRobotID();
 //Judge_Uart();
        //视觉
 
-    FIFO_state = FIFO_Read(&NUC_fifo,fifo_pack,NUC_RECV_SIZE,0XFF,0X0D);
+    FIFO_state = FIFO_Read(&NUC_fifo,fifo_pack,NUC_RECV_SIZE,'C',0XFF);
    if(FIFO_state)USB_Version_devode();
 //    if(shoot_cmd_send.)
     // *nuc_can_rx=*(uint8_t*)CANCommGet(cmd_can_comm);
@@ -1493,19 +1499,27 @@ DeterminRobotID();
 
     PubPushMessage(gimbal_cmd_pub, (void *)&gimbal_cmd_send); 
 
-    //向上位机发送消息
-    vision_send_data[0]=0xff; 
-    vision_send_data[1] = chassis_fetch_data_uart.color;
+//向上位机发送消息
+    vision_send_data[0]='C'; 
+    vision_send_data[1]='B'; 
+    vision_send_data[2] = 1;//chassis_fetch_data_uart.color;
+    // memcpy(vision_send_data + 3, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_quat[0], 4);
 
-    float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 4);//低位先行
+    EularAngleToQuaternion(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[2],gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0],gimbal_fetch_data.gimbal_imu_data->output.INS_angle[1],p);
+    memcpy(vision_send_data + 3, p, 16);
+
     yaw_reverse =  gimbal_fetch_data.gimbal_imu_data->output.INS_angle[2];
-    float_to_uint8_manual(yaw_reverse, vision_send_data + 8);
-    memcpy(&chassis_fetch_data_uart.initial_speed,&vision_send_data[26],4);
-    static uint8_t nuc_cnt = 25;
-    nuc_cnt = (nuc_cnt + 1) % 25 + 25;
-    vision_send_data[30]=nuc_cnt;
-    vision_send_data[31]=0x0D;
-    HostSend(host_instance, vision_send_data, 32);
+    float_to_uint8_manual(yaw_reverse, vision_send_data + 19);
+    memcpy(vision_send_data + 23, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[1],8);
+
+    float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 27);//低位先行
+    memcpy(vision_send_data + 31, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[1],4);
+    memcpy(&vision_send_data[35], &chassis_fetch_data_uart.initial_speed,4);
+    
+    // memcpy(&gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],vision_send_data + 30,4);
+    Append_CRC16_Check_Sum(vision_send_data,43);
+    vision_send_data[39]=0x0D;
+    HostSend(host_instance, vision_send_data, 43);
 
 #endif
     // 从其他应用获取回传数据

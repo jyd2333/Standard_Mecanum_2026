@@ -165,21 +165,23 @@ PIDInstance *PIDRegister(PID_Init_Config_s *config)
 float PIDCalculate(PIDInstance *pid, float measure, float ref)
 {
     // 堵转检测
+    if (isnan(ref) || isnan(measure)) {
+        return pid->Last_Output; // 维持上一帧输出，不进行计算
+    }
     if (pid->Improve & PID_ErrorHandle)
         f_PID_ErrorHandle(pid);
 
     pid->dt = DWT_GetDeltaT(&pid->DWT_CNT); // 获取两次pid计算的时间间隔,用于积分和微分
-    
+
     // 保存上次的测量值和误差,计算当前error
     pid->Measure = measure;
-    if (pid->Improve & PID_MeasureFiliter)f_Measure_Filter(pid);
     pid->Ref     = ref;
-    pid->Err     = pid->Ref - pid->Measure; 
+    pid->Err     = pid->Ref - pid->Measure;
 
     // 错误处理
-    if(pid->ERRORHandler.ERRORType == PID_MOTOR_BLOCKED_ERROR) // 堵转
-        pid->Ref     = -ref;
-    
+    if (pid->ERRORHandler.ERRORType == PID_MOTOR_BLOCKED_ERROR) // 堵转
+        pid->Ref = -ref;
+
     // 如果在死区外,则计算PID
     if (abs(pid->Err) > pid->DeadBand) {
         // 基本的pid计算,使用位置式
