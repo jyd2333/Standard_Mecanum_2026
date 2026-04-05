@@ -1,5 +1,6 @@
 // app
-#include "robot_def.h"
+#include "robot_board.h"
+#include "robot_types.h"
 #include "omni_UI.h"
 // module
 #include "rm_referee.h"

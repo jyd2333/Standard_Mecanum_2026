@@ -4,7 +4,7 @@
 #include "crc8.h"
 #include "bsp_dwt.h"
 #include "bsp_log.h"
-#include "robot_def.h"
+#include "robot_types.h"
 /**
  * @brief 重置CAN comm的接收状态和buffer
  *
@@ -133,4 +133,3 @@ uint8_t CANCommIsOnline(CANCommInstance *instance)
 {
     return DaemonIsOnline(instance->comm_daemon);
 }
-

@@ -12,7 +12,9 @@
  */
 
 #include "chassis.h"
-#include "robot_def.h"
+#include "robot_board.h"
+#include "robot_params.h"
+#include "robot_types.h"
 #include "dji_motor.h"
 #include "DMmotor.h"
 #include "super_cap.h"
@@ -46,7 +48,7 @@
 // static CANCommInstance *chasiss_can_comm; // 双板通信CAN comm
 //attitude_t *Chassis_IMU_data;
 #endif // CHASSIS_BOARD
-#ifdef CHASSIS_BOARD
+#if defined(CHASSIS_BOARD) || defined(ONE_BOARD)
 static Publisher_t *chassis_pub;                    // 用于发布底盘的数据
 static Subscriber_t *chassis_sub;                   // 用于订阅底盘的控制命令
 #endif                                              // !ONE_BOARD
@@ -108,6 +110,26 @@ static float friction_lf_state = 0.0f;
 static float friction_rf_state = 0.0f;
 static float friction_lb_state = 0.0f;
 static float friction_rb_state = 0.0f;
+
+// /*
+//  * 麦轮力控参数（RMCS 思路简化版）：
+//  * 1) 速度误差 -> 目标加速度（P 环）
+//  * 2) 目标加速度 -> 轮作用力分配
+//  * 3) 轮作用力 -> 电流前馈
+//  */
+// #define CHASSIS_FORCE_EQ_MASS           1.0f
+// #define CHASSIS_FORCE_EQ_INERTIA        0.8f
+// #define CHASSIS_FORCE_VEL_P             2.0f
+// #define CHASSIS_FORCE_WZ_P              1.4f
+// #define CHASSIS_FORCE_ACC_LIMIT         2500.0f
+// #define CHASSIS_FORCE_WZ_ACC_LIMIT      4500.0f
+// #define CHASSIS_FORCE_TO_CURRENT        1.3f
+// #define CHASSIS_FORCE_CURRENT_FF_LIMIT  3500.0f
+
+// static float chassis_force_ff_lf = 0.0f;
+// static float chassis_force_ff_rf = 0.0f;
+// static float chassis_force_ff_lb = 0.0f;
+// static float chassis_force_ff_rb = 0.0f;
 void ChassisInit()
 {
     ;
@@ -158,14 +180,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            // .current_feedforward_ptr = &friction_lf_state,
+            //.current_feedforward_ptr = &chassis_force_ff_lf,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            // .feedforward_flag       = CURRENT_FEEDFORWARD,
+            //.feedforward_flag      = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -180,14 +202,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            // .current_feedforward_ptr = &friction_rf_state,
+            //.current_feedforward_ptr = &chassis_force_ff_rf,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            // .feedforward_flag       = CURRENT_FEEDFORWARD,
+            //.feedforward_flag      = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -202,14 +224,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            // .current_feedforward_ptr = &friction_rb_state,
+            //.current_feedforward_ptr = &chassis_force_ff_rb,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            // .feedforward_flag       = CURRENT_FEEDFORWARD,
+            //.feedforward_flag      = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -224,14 +246,14 @@ void ChassisInit()
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut        = 16000,
             },
-            // .current_feedforward_ptr = &friction_lb_state,
+            //.current_feedforward_ptr = &chassis_force_ff_lb,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            // .feedforward_flag       = CURRENT_FEEDFORWARD,
+            //.feedforward_flag      = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
@@ -427,6 +449,79 @@ static void MecanumCalculate()
     updateAllWheelsFriction(vt_lf, vt_rf, vt_lb, vt_rb);
 }
 
+// static float clamp_absf(float value, float max_abs)
+// {
+//     if (value > max_abs)
+//         return max_abs;
+//     if (value < -max_abs)
+//         return -max_abs;
+//     return value;
+// }
+
+// static void ChassisForceReset(void)
+// {
+//     chassis_force_ff_lf = 0.0f;
+//     chassis_force_ff_rf = 0.0f;
+//     chassis_force_ff_lb = 0.0f;
+//     chassis_force_ff_rb = 0.0f;
+// }
+
+// static void ObserveMecanumBodySpeed(float *vx_obs, float *vy_obs, float *wz_obs)
+// {
+//     if (motor_lf == NULL || motor_rf == NULL || motor_lb == NULL || motor_rb == NULL) {
+//         *vx_obs = 0.0f;
+//         *vy_obs = 0.0f;
+//         *wz_obs = 0.0f;
+//         return;
+//     }
+
+//     const float w_lf = motor_lf->measure.speed_aps;
+//     const float w_rf = motor_rf->measure.speed_aps;
+//     const float w_lb = motor_lb->measure.speed_aps;
+//     const float w_rb = motor_rb->measure.speed_aps;
+
+//     *vx_obs = (w_lf - w_rf + w_lb - w_rb) * 0.25f;
+//     *vy_obs = (w_lf + w_rf - w_lb - w_rb) * 0.25f;
+
+//     const float wz_lf = (fabsf(LF_CENTER) > 1e-6f) ? (w_lf / LF_CENTER) : 0.0f;
+//     const float wz_rf = (fabsf(RF_CENTER) > 1e-6f) ? (w_rf / RF_CENTER) : 0.0f;
+//     const float wz_lb = (fabsf(LB_CENTER) > 1e-6f) ? (w_lb / LB_CENTER) : 0.0f;
+//     const float wz_rb = (fabsf(RB_CENTER) > 1e-6f) ? (w_rb / RB_CENTER) : 0.0f;
+//     *wz_obs = (wz_lf + wz_rf + wz_lb + wz_rb) * 0.25f;
+// }
+
+// static void ChassisForceControlMecanum(void)
+// {
+//     float vx_obs, vy_obs, wz_obs;
+//     ObserveMecanumBodySpeed(&vx_obs, &vy_obs, &wz_obs);
+
+//     /* 速度误差闭环为目标加速度（RMCS 5.2.4） */
+//     const float ax_cmd = clamp_absf((chassis_vx - vx_obs) * CHASSIS_FORCE_VEL_P, CHASSIS_FORCE_ACC_LIMIT);
+//     const float ay_cmd = clamp_absf((chassis_vy - vy_obs) * CHASSIS_FORCE_VEL_P, CHASSIS_FORCE_ACC_LIMIT);
+//     const float az_cmd = clamp_absf((chassis_cmd_recv.wz - wz_obs) * CHASSIS_FORCE_WZ_P, CHASSIS_FORCE_WZ_ACC_LIMIT);
+
+//     /* 目标加速度映射到底盘平移力和旋转力矩（RMCS 5.2.5） */
+//     const float fx = CHASSIS_FORCE_EQ_MASS * ax_cmd;
+//     const float fy = CHASSIS_FORCE_EQ_MASS * ay_cmd;
+//     const float tz = CHASSIS_FORCE_EQ_INERTIA * az_cmd;
+
+//     float lever = (fabsf(LF_CENTER) + fabsf(RF_CENTER) + fabsf(LB_CENTER) + fabsf(RB_CENTER)) * 0.25f;
+//     if (lever < 1e-3f)
+//         lever = 1.0f;
+//     const float fr = tz / lever;
+
+//     const float f_lf = 0.25f * ( fx + fy + fr);
+//     const float f_rf = 0.25f * (-fx + fy + fr);
+//     const float f_lb = 0.25f * ( fx - fy + fr);
+//     const float f_rb = 0.25f * (-fx - fy + fr);
+
+//     /* 轮作用力映射到电机电流前馈 */
+//     chassis_force_ff_lf = clamp_absf(f_lf * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
+//     chassis_force_ff_rf = clamp_absf(f_rf * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
+//     chassis_force_ff_lb = clamp_absf(f_lb * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
+//     chassis_force_ff_rb = clamp_absf(f_rb * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
+// }
+
 static ramp_t super_ramp;
 static float Power_Output;
 const float buffer_energy_loop_kp = 0.5f;
@@ -619,7 +714,7 @@ void ChassisTask()
         HAL_CAN_Start(&hcan1);
 }
     else superCap_watchdog--;
-#ifdef CHASSIS_BOARD
+#if defined(CHASSIS_BOARD) || defined(ONE_BOARD)
     SubGetMessage(chassis_sub, &chassis_cmd_recv);
     // chassis_cmd_recv_half_float = *(Chassis_Ctrl_Cmd_s_half_float *)CANCommGet(chasiss_can_comm);
     // chassis_cmd_recv.power_limit=1000;
@@ -633,10 +728,19 @@ void ChassisTask()
     //chassis_cmd_recv.offset_angle=half_to_float(chassis_cmd_recv_half_float.offset_angle);
     //chassis_cmd_recv.SuperCap_flag_from_user=chassis_cmd_recv_half_float.SuperCap_flag_from_user;
     // chassis_cmd_recv.chassis_mode=chassis_rs485_recv.chassis_mode;//chassis_cmd_recv_half_float.chassis_mode;
-    if(referee_data_for_ui->GameRobotState.mains_power_chassis_output == 0)
+    // 裁判系统底盘电源位做去抖，避免单帧抖动导致瞬时无力
+    static uint16_t mains_power_off_cnt = 0;
+    if (referee_data_for_ui->GameRobotState.mains_power_chassis_output == 0) {
+        if (mains_power_off_cnt < 1000)
+            mains_power_off_cnt++;
+    } else {
+        mains_power_off_cnt = 0;
+    }
+    if (mains_power_off_cnt > 30)
         chassis_cmd_recv.chassis_mode = CHASSIS_ZERO_FORCE;
     if (chassis_cmd_recv.chassis_mode == CHASSIS_ZERO_FORCE){ // 如果出现重要模块离线或遥控器设置为急停,让电机停止
     
+        //ChassisForceReset();
         DJIMotorStop(motor_lf);
         DJIMotorStop(motor_rf);
         DJIMotorStop(motor_lb);
@@ -684,24 +788,32 @@ void ChassisTask()
 
     // 根据控制模式设定旋转速度
     switch (chassis_cmd_recv.chassis_mode) {
-        case CHASSIS_NO_FOLLOW:     //一般不进入
-            // 底盘不旋转,但维持全向机动,一般用于调整云台姿态
-            chassis_cmd_recv.wz = 0;
-            powerLim=0;
-            cos_theta = arm_cos_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
-            sin_theta = arm_sin_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
+        case CHASSIS_NO_FOLLOW:
+            chassis_cmd_recv.wz = 0.0f;
+            powerLim = 0;
+            cos_theta = 1.0f;
+            sin_theta = 0.0f;
             leg_mode  = LEG_ACTIVE_SUSPENSION;
             ramp_init(&rotate_ramp, 250);
             break;
-        case CHASSIS_FOLLOW_GIMBAL_YAW: // 跟随云台
-            powerLim=0;            
+
+        // case CHASSIS_MECANUM_FORCE:
+        //     powerLim = 0;
+        //     cos_theta = 1.0f;
+        //     sin_theta = 0.0f;
+        //     leg_mode  = LEG_ACTIVE_SUSPENSION;
+        //     ramp_init(&rotate_ramp, 250);
+        //     break;
+
+        case CHASSIS_FOLLOW_GIMBAL_YAW:
+            powerLim = 0;
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
-            // chassis_cmd_recv.wz = 0;
             cos_theta = arm_cos_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta = arm_sin_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             leg_mode  = LEG_ACTIVE_SUSPENSION;
             ramp_init(&rotate_ramp, 250);
             break;
+
         case CHASSIS_ROTATE: // 自旋,同时保持全向机动;当前wz维持定值,后续增加不规则的变速策略
         
         // vw_set = chassis_cmd_recv.vw_set;
@@ -880,10 +992,15 @@ void ChassisTask()
     // 根据控制模式进行正运动学解算,计算底盘输出
     MecanumCalculate();
 
+    // if (chassis_cmd_recv.chassis_mode == CHASSIS_MECANUM_FORCE)
+    //     ChassisForceControlMecanum();
+    // else
+    //     ChassisForceReset();
+
     // 根据裁判系统的反馈数据和电容数据对输出限幅并设定闭环参考值
     Super_Cap_control();
     SuperCapTask();
-#endif                                                         // CHASSIS_BOARD
+#endif                                                         // CHASSIS_BOARD || ONE_BOARD
     // 获得给电容传输的电容吸取功率等级
     // Power_get();
 

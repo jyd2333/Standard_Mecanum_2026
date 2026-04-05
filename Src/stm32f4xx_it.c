@@ -26,7 +26,7 @@
 #include "fifo.h"
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */
-#include "robot_def.h"
+#include "robot_board.h"
 /* USER CODE END TD */
 
 /* Private define ------------------------------------------------------------*/

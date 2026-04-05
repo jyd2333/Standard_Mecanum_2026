@@ -12,7 +12,7 @@
 #include "ins_task.h"
 #include "AHRS.h"
 #include "QuaternionEKF.h"
-#include "robot_def.h"
+#include "robot_params.h"
 // 旋转与零漂
 static float gyro_scale_factor[3][3]  = {BMI088_BOARD_INSTALL_SPIN_MATRIX};
 static float accel_scale_factor[3][3] = {BMI088_BOARD_INSTALL_SPIN_MATRIX};

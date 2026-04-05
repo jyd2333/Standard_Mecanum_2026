@@ -1,5 +1,7 @@
 #include "shoot.h"
-#include "robot_def.h"
+#include "robot_board.h"
+#include "robot_params.h"
+#include "robot_types.h"
 #include "dji_motor.h"
 #include "message_center.h"
 #include "bsp_dwt.h"

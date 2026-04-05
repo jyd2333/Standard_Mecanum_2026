@@ -13,7 +13,7 @@
 #include "vision.h"
 #include "daemon.h"
 #include "bsp_log.h"
-#include "robot_def.h"
+#include "robot_board.h"
 #include "fifo.h"
 static Vision_Recv_s recv_data;
 static Vision_Send_s send_data;

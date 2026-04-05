@@ -5,7 +5,7 @@
 #include "power_calc.h"
 #include <stdint.h>
 #include "power_calc.h"
-#include "robot_def.h"
+#include "robot_board.h"
 static uint8_t idx = 0; // register idx,是该文件的全局电机索引,在注册时使用
 /* DJI电机的实例,此处仅保存指针,内存的分配将通过电机实例初始化时通过malloc()进行 */
 static DJIMotorInstance *dji_motor_instance[DJI_MOTOR_CNT] = {NULL}; // 会在control任务中遍历该指针数组进行pid计算
@@ -361,7 +361,7 @@ void DJIMotorControl()
             }
             power_data.input_power[power_data.count]    =PowerInputCalc(motor->measure.speed_rpm, motor->motor_controller.speed_PID.Output);
             power_data.wheel_speed[power_data.count]    = motor->measure.speed_rpm;
-            power_data.predict_output[power_data.count] = motor->motor_controller.speed_PID.Output;
+            power_data.predict_output[power_data.count] = pid_ref;
             power_data.count++;
             
         }

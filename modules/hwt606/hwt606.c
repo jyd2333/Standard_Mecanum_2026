@@ -1,4 +1,6 @@
 #include "hwt606.h"
+#include "bsp_usart.h"
+#include "daemon.h"
 float hwt606_dt;
 hwt606_info_t *hwt606_info_t_ptr;
 hwt606_info_t HWT606_info;

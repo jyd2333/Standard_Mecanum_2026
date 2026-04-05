@@ -6,7 +6,7 @@
 #include "cmsis_os.h"
 #include "user_lib.h"
 
-typedef struct
+typedef struct INS_Instance
 {
     struct {
         float INS_gyro[3];
@@ -25,7 +25,7 @@ typedef struct
     float timing_time; // 任务运行的时间 单位 s
 } INS_Instance;
 
-typedef struct
+typedef struct QEKF_INS_Instance
 {
     struct {
         float INS_gyro[3];

@@ -3,7 +3,7 @@
 
 #include "usart.h"
 #include "referee_protocol.h"
-#include "robot_def.h"
+#include "robot_types.h"
 #include "bsp_usart.h"
 #include "FreeRTOS.h"
 

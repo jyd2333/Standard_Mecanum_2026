@@ -1,6 +1,7 @@
 #ifndef __HWT606_H
 #define __HWT606_H
-#include "robot_def.h"
+#include "robot_types.h"
+#include "usart.h"
 #include "memory.h"
 #define HWT606_recv_size 16u
 typedef struct{

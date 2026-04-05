@@ -47,7 +47,8 @@
             "xutility": "c",
             "bsp_dwt.h": "c",
             "controller.h": "c"
-        }
+        },
+        "stm32-for-vscode.openOCDPath": false
     },
     "extensions": {}
 }

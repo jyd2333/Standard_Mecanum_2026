@@ -1,7 +1,9 @@
 #include "stdio.h"
 
 #include "gimbal.h"
-#include "robot_def.h"
+#include "robot_board.h"
+#include "robot_params.h"
+#include "robot_types.h"
 #include "dji_motor.h"
 #include "DMmotor.h"
 #include "ins_task.h"
@@ -93,16 +95,16 @@ void GimbalInit()
         },
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp            = 3,//1.7,//1.8,//0.6, // 0.24, // 0.31, // 0.45
+                .Kp            = 17,//1.7,//1.8,//0.6, // 0.24, // 0.31, // 0.45
                 .Ki            = 1,
-                .Kd            = 0.1f,//0.13,//0.07,
+                .Kd            = 0.16f,//0.13,//0.07,
                 .DeadBand      = 0.0f,
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .IntegralLimit = 5,
                 .MaxOut = 100,
             },
             .speed_PID = {
-                .Kp            = 2500, // 18000, // 10500,//1000,//10000,// 11000
+                .Kp            = 2700, // 18000, // 10500,//1000,//10000,// 11000
                 .Ki            = 0,    // 0
                 .Kd            = 10,    // 10, // 30
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_OutputFilter,

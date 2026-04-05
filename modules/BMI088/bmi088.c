@@ -2,7 +2,7 @@
 #include "bmi088.h"
 #include "user_lib.h"
 #include "buzzer.h"
-#include "robot_def.h"
+#include "robot_params.h"
 
 // ---------------------------以下私有函数,用于读写BMI088寄存器封装,blocking--------------------------------//
 /**

@@ -5,7 +5,7 @@
 #include "dji_motor.h"
 #include "step_motor.h"
 #include "servo_motor.h"
-#include "robot_def.h"
+#include "robot_board.h"
 #include "DMmotor.h"
 
 uint16_t g_cmd_set   = 2;

@@ -10,10 +10,11 @@
  */
 #include "bsp_init.h"
 #include "robot.h"
-#include "robot_def.h"
+#include "robot_board.h"
 #include "robot_task.h"
 #include "buzzer.h"
 #include "robot_test.h"
+#include "vision.h"
 // #include "referee_UI.h"
 
 #define ROBOT_DEF_PARAM_WARNING

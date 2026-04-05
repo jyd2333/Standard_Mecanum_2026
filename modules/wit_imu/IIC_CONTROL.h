@@ -1,6 +1,7 @@
 #ifndef _IIC_CONTROL_H
 #define _IIC_CONTROL_H
-#include "robot_def.h"
+#include <stdint.h>
+#include "main.h"
 // #include "sys.h"
 //IO方向设置
 #define SDA_IN()  (GPIOF->MODER &= ~(3 << (0 * 2)))  // PF0 配置为输入模式

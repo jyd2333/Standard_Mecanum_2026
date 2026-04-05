@@ -12,7 +12,6 @@
 #include "bsp_usart.h"
 #include "bsp_usb.h"
 #include "fifo.h"
-#include "robot_def.h"
 static uint8_t idx = 0; // register idx,是该文件的全局上位机索引,在注册时使用
 static HostInstance *host_instance[Host_Instance_MX_CNT];
 
@@ -38,8 +37,7 @@ static void HostOfflineCallback(void *instance)
     // }
 
     if(_instance->comm_mode==HOST_USART){
-        if(_instance->RECV_SIZE==Chassis_Upload_Data_s_uart_size+3);//HAL_GPIO_WritePin(GPIOE,GPIO_PIN_11,GPIO_PIN_SET);
-            USARTServiceInit(_instance->comm_instance);
+        USARTServiceInit(_instance->comm_instance);
     }
     else{
         LOGWARNING("[vision] vision offline, restart communication.");

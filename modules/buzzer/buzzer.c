@@ -16,7 +16,7 @@
 #include <ctype.h>
 #include <stdbool.h>
 #include "user_lib.h"
-#include "robot_def.h"
+#include "robot_params.h"
 
 // extern osThreadId_t BuzzerHandle; // 由于线程挂起后无法自己恢复，所以需要使用线程句柄
 static BuzzerInstance *buzzer = NULL;
