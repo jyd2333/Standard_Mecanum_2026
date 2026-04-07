@@ -387,7 +387,7 @@ void ShootTask()
     
     // 从cmd获取控制数据
     SubGetMessage(shoot_sub, &shoot_cmd_recv);
-    shoot_cmd_recv.shoot_rate = 8;
+    shoot_cmd_recv.shoot_rate = 8;//射频切换
     // shoot_cmd_recv.friction_mode = friction_text_mode;
     // shoot_cmd_recv.shoot_mode    = shoot_text_mode;
     // loadmode                     = shoot_cmd_recv.load_mode;

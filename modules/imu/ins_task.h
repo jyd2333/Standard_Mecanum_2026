@@ -9,9 +9,9 @@
 typedef struct INS_Instance
 {
     struct {
-        float INS_gyro[3];
-        float INS_accel[3];
-        float INS_mag[3];
+        float INS_gyro[3];//弧度制欧拉角
+        float INS_accel[3];//加速度
+        float INS_mag[3];//
         float INS_quat[4];
     } INS_data;
 

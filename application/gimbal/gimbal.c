@@ -27,6 +27,16 @@ static float pitch_speed_feedforward = 0;
 //static float yaw_angle_imu,yaw_gyro_imu;
 extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
 float yaw_gyro_twoboard=0,yaw_current_feedforward;
+/**
+ * @brief yaw轴速度前馈与电流前馈变量（用于自瞄模式）
+ */
+static float yaw_speed_feedforward = 0;      // yaw轴速度前馈值
+static float filtered_yaw_vel = 0;            // 视觉yaw速度滤波值
+static const float yaw_vel_filter_alpha = 0.12f; // 速度滤波系数
+static const float yaw_vel_deadzone = 0.1f;     // 小速死区，避免噪声前馈
+extern float vision_yaw_vel; // 从视觉获取的yaw速度前馈
+const float yaw_feedforward_vel_gain = 0.1f;      // 速度前馈增益
+
 const float pitch_offset = 7.7f;
 float pitch_tor_feedforward = 0;
 float pitch_gyro_measure = 0;
@@ -95,16 +105,16 @@ void GimbalInit()
         },
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp            = 17,//1.7,//1.8,//0.6, // 0.24, // 0.31, // 0.45
+                .Kp            = 3,//1.7,//1.8,//0.6, // 0.24, // 0.31, // 0.45
                 .Ki            = 1,
-                .Kd            = 0.16f,//0.13,//0.07,
+                .Kd            = 0.1f,//0.13,//0.07,
                 .DeadBand      = 0.0f,
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .IntegralLimit = 5,
                 .MaxOut = 100,
             },
             .speed_PID = {
-                .Kp            = 2700, // 18000, // 10500,//1000,//10000,// 11000
+                .Kp            = 2500, // 18000, // 10500,//1000,//10000,// 11000
                 .Ki            = 0,    // 0
                 .Kd            = 10,    // 10, // 30
                 .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,// | PID_OutputFilter,
@@ -117,8 +127,8 @@ void GimbalInit()
             .other_angle_feedback_ptr = &chassis_rs485_recv.yaw_angle,//&gimbal_IMU_data->output.INS_angle_deg[INS_YAW_ADDRESS_OFFSET], // yaw????????
             // ?????????????????????,?????,ins_task.md????c???bodyframe????????
             .other_speed_feedback_ptr = &chassis_rs485_recv.yaw_gyro,//&yaw_gyro_twoboard,//&chassis_rs485_recv.yaw_gyro-&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],//,&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],
-            // .current_feedforward_ptr=&yaw_current_feedforward,
-            //.speed_feedforward_ptr=&yaw_speedFeed,
+            .speed_feedforward_ptr = &yaw_speed_feedforward,   // 自瞄模式下的速度前馈
+            //.current_feedforward_ptr = &yaw_current_feedforward, // 自瞄模式下的电流前馈
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
@@ -127,7 +137,7 @@ void GimbalInit()
             .close_loop_type       = ANGLE_LOOP | SPEED_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_REVERSE,
             // .feedback_reverse_flag = FEEDBACK_DIRECTION_REVERSE,
-            // .feedforward_flag  =CURRENT_FEEDFORWARD,
+            .feedforward_flag      = SPEED_FEEDFORWARD | CURRENT_FEEDFORWARD,  // 启用速度与电流前馈
         },
         .motor_type = GM6020};
         yaw_motor   = DJIMotorInit(&yaw_config);
@@ -176,7 +186,7 @@ void GimbalInit()
         .motor_type = DM_Motor,
         .controller_param_init_config ={
             .angle_PID = {
-                .Kp = 12.5,
+                .Kp = 10.5,
                 .Ki = 0,
                 .Kd = 0.01,
                 .DeadBand = 0,
@@ -185,7 +195,7 @@ void GimbalInit()
                 .MaxOut = 20,
             },
             .speed_PID = {
-                .Kp = 0.91,
+                .Kp = 1.0,
                 .Ki = 9.81,
                 .Kd = 0.0,
                 .DeadBand = 0,
@@ -398,19 +408,44 @@ void GimbalTask()
             // DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
             if (gimbal_cmd_recv.nuc_mode == version_control)
             {
-                float error = gimbal_cmd_recv.yaw_version - *yaw_motor->motor_controller.other_angle_feedback_ptr;
-                if (error > 180.0f)
-                {
-                    gimbal_cmd_recv.yaw_version = *yaw_motor->motor_controller.other_angle_feedback_ptr - 360.0 + error;
+                float raw_yaw_vel = 0;
+                // 自瞄模式：使用视觉提供的yaw速度作为前馈
+                #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
+                    // 单板或gimbal板模式：从USB接收的视觉数据获取yaw速度
+                    raw_yaw_vel = vision_yaw_vel;
+                #elif defined(CHASSIS_BOARD)
+                    // 双板底盘模式：从RS485接收的gimbal板数据获取yaw速度
+                    raw_yaw_vel = chassis_rs485_recv.yaw_vel;
+                #endif
+
+                // 低通滤波，抑制视觉/通讯中的高频噪声
+                filtered_yaw_vel += yaw_vel_filter_alpha * (raw_yaw_vel - filtered_yaw_vel);
+
+                // 小速死区，避免微小波动产生前馈扰动
+                if (fabsf(filtered_yaw_vel) < yaw_vel_deadzone) {
+                    filtered_yaw_vel = 0.0f;
                 }
-                else if (error < -180.0)
+
+                yaw_speed_feedforward = filtered_yaw_vel * yaw_feedforward_vel_gain;
+
+                float yaw_error = gimbal_cmd_recv.yaw_version - *yaw_motor->motor_controller.other_angle_feedback_ptr;
+                // 处理角度跨越（±180°）
+                if (yaw_error > 180.0f)
                 {
-                    gimbal_cmd_recv.yaw_version = *yaw_motor->motor_controller.other_angle_feedback_ptr + (360 + error);
+                    gimbal_cmd_recv.yaw_version = *yaw_motor->motor_controller.other_angle_feedback_ptr - 360.0 + yaw_error;
                 }
+                else if (yaw_error < -180.0)
+                {
+                    gimbal_cmd_recv.yaw_version = *yaw_motor->motor_controller.other_angle_feedback_ptr + (360 + yaw_error);
+                }
+                
                 DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw_version);
             }
             else
             {
+                // 非自瞄模式：禁用前馈
+                yaw_speed_feedforward = 0;
+                //yaw_current_feedforward = 0;
                 DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw);
             }
             break;

@@ -1,3 +1,4 @@
+
 #include "bmi088_regNdef.h"
 #include "bmi088.h"
 #include "user_lib.h"
@@ -13,6 +14,7 @@
  * @param dataptr 读取到的数据存放的指针
  * @param len 读取长度
  */
+//加速度计读取函数
 static void BMI088AccelRead(BMI088Instance *bmi088, uint8_t reg, uint8_t *dataptr, uint8_t len)
 {
     if (len > 6)
@@ -34,6 +36,7 @@ static void BMI088AccelRead(BMI088Instance *bmi088, uint8_t reg, uint8_t *datapt
  * @param dataptr 读取到的数据存放的指针
  * @param len 读取长度
  */
+//陀螺仪读取函数
 static void BMI088GyroRead(BMI088Instance *bmi088, uint8_t reg, uint8_t *dataptr, uint8_t len)
 {
     if (len > 6)
@@ -55,6 +58,7 @@ static void BMI088GyroRead(BMI088Instance *bmi088, uint8_t reg, uint8_t *dataptr
  * @param reg  待写入的寄存器地址
  * @param data 待写入的数据(注意不是指针)
  */
+//寄存器写函数,写入加速度计数据
 static void BMI088AccelWriteSingleReg(BMI088Instance *bmi088, uint8_t reg, uint8_t data)
 {
     uint8_t tx[2] = {reg, data};
@@ -69,6 +73,7 @@ static void BMI088AccelWriteSingleReg(BMI088Instance *bmi088, uint8_t reg, uint8
  * @param reg  待写入的寄存器地址
  * @param data 待写入的数据(注意不是指针)
  */
+//寄存器写函数,写入陀螺仪数据
 static void BMI088GyroWriteSingleReg(BMI088Instance *bmi088, uint8_t reg, uint8_t data)
 {
     uint8_t tx[2] = {reg, data};
@@ -352,6 +357,7 @@ static void BMI088SetMode(BMI088Instance *bmi088Instance, BMI088_Work_Mode_e mod
  * @param bmi088
  * @return BMI088_Data_t
  */
+//----------------------------------------------------------------BMI088数据获取----------------------------------------------------------------------------------//
 uint8_t BMI088Acquire(BMI088Instance *bmi088, BMI088_Data_t *data_store)
 {
     // 如果是blocking模式,则主动触发一次读取并返回数据
@@ -416,6 +422,7 @@ float gyro_offset_sum[3]={0,0,0};
  * @attention 不管工作模式是blocking还是IT,标定时都是blocking模式,所以不用担心中断关闭后无法标定(RobotInit关闭了全局中断)
  * @param _bmi088 待标定的BMI088实例
  */
+//BMI088CalibrateIMU 根据 _bmi088->cali_mode 选择在线标定或预设数据导入：在线模式下累加多次陀螺仪读数并计算平均偏移量，预置模式下直接加载预定义的陀螺偏移值。
 void BMI088CalibrateIMU(BMI088Instance *_bmi088)
 {
     if (_bmi088->cali_mode == BMI088_CALIBRATE_ONLINE_MODE) // 性感bmi088在线标定

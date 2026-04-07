@@ -78,6 +78,7 @@ uint16_t UniCommPackChassisCtrl(const Chassis_Ctrl_Cmd_s_uart *src, uint8_t *dst
     UniCommFloatToBytes(src->gimbal_error_angle, dst + CTRL_FLOAT_BASE_INDEX + 28u);
     int32_to_bytes_be(src->shoot_count, dst + CTRL_FLOAT_BASE_INDEX + 32u);
     UniCommFloatToBytes(src->nuc_yaw, dst + CTRL_FLOAT_BASE_INDEX + 36u);
+    UniCommFloatToBytes(src->yaw_vel, dst + CTRL_FLOAT_BASE_INDEX + 40u);  // 视觉yaw速度前馈
 
     dst[CTRL_FLAGS_BASE_INDEX + 0u] = (uint8_t)src->nuc_mode;
     dst[CTRL_FLAGS_BASE_INDEX + 1u] = src->UI_SendFlag;
@@ -115,6 +116,7 @@ bool UniCommUnpackChassisCtrl(const uint8_t *src, uint16_t src_len, Chassis_Ctrl
     dst->gimbal_error_angle = UniCommBytesToFloat(src + CTRL_FLOAT_BASE_INDEX + 28u);
     dst->shoot_count = bytes_to_int32_be(src + CTRL_FLOAT_BASE_INDEX + 32u);
     dst->nuc_yaw = UniCommBytesToFloat(src + CTRL_FLOAT_BASE_INDEX + 36u);
+    dst->yaw_vel = UniCommBytesToFloat(src + CTRL_FLOAT_BASE_INDEX + 40u);  // 视觉yaw速度前馈
 
     dst->nuc_mode = (nuc_mode_e)src[CTRL_FLAGS_BASE_INDEX + 0u];
     dst->UI_SendFlag = src[CTRL_FLAGS_BASE_INDEX + 1u];
