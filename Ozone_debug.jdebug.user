@@ -1,22 +1,12 @@
 
-
-OpenDocument="omni_UI.c", FilePath="d:/Combat/Standard_Mecanum_2026/application/UI/omni_UI.c", Line=0
-OpenDocument="main.c", FilePath="d:/Combat/Standard_Mecanum_2026/Src/main.c", Line=69
-OpenDocument="robot_task.h", FilePath="d:/Combat/Standard_Mecanum_2026/application/robot_task.h", Line=49
-OpenDocument="freertos.c", FilePath="d:/Combat/Standard_Mecanum_2026/Src/freertos.c", Line=111
-OpenDocument="super_cap.c", FilePath="d:/Combat/Standard_Mecanum_2026/modules/super_cap/super_cap.c", Line=110
-OpenDocument="startup_stm32f407ighx.s", FilePath="d:/Combat/Standard_Mecanum_2026/Startup/startup_stm32f407ighx.s", Line=47
-OpenDocument="bsp_dwt.c", FilePath="d:/Combat/Standard_Mecanum_2026/bsp/dwt/bsp_dwt.c", Line=84
-OpenDocument="tasks.c", FilePath="d:/Combat/Standard_Mecanum_2026/Middlewares/Third_Party/FreeRTOS/Source/tasks.c", Line=3418
 OpenToolbar="Debug", Floating=0, x=0, y=0
-OpenWindow="Source Files", DockArea=LEFT, x=0, y=1, w=594, h=324, FilterBarShown=1, TotalValueBarShown=0, ToolBarShown=0
-OpenWindow="Watched Data 1", DockArea=LEFT, x=0, y=0, w=594, h=333, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
-OpenWindow="Watched Data 2", DockArea=LEFT, x=0, y=2, w=594, h=266, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
+OpenWindow="Source Files", DockArea=LEFT, x=0, y=1, w=594, h=458, FilterBarShown=1, TotalValueBarShown=0, ToolBarShown=0
+OpenWindow="Watched Data 1", DockArea=LEFT, x=0, y=0, w=594, h=469, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
+OpenWindow="Watched Data 2", DockArea=LEFT, x=0, y=2, w=594, h=378, FilterBarShown=0, TotalValueBarShown=0, ToolBarShown=0
 SmartViewPlugin="", Page="", Toolbar="Hidden", Window="SmartView 1"
-TableHeader="Source Files", SortCol="File", SortOrder="ASCENDING", VisibleCols=["File";"Status";"Size";"#Insts";"Path"], ColWidths=[239;100;100;100;770]
+TableHeader="Source Files", SortCol="File", SortOrder="ASCENDING", VisibleCols=["File";"Status";"Size";"#Insts";"Path"], ColWidths=[239;100;100;100;710]
 TableHeader="Power Sampling", SortCol="None", SortOrder="ASCENDING", VisibleCols=["Index";"Time";"Ch 0"], ColWidths=[100;100;100]
+TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Refresh"], ColWidths=[206;176;212]
 TableHeader="RegisterSelectionDialog", SortCol="None", SortOrder="ASCENDING", VisibleCols=[], ColWidths=[]
 TableHeader="Watched Data 2", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Location";"Refresh"], ColWidths=[100;100;100;294]
-TableHeader="Watched Data 1", SortCol="Expression", SortOrder="ASCENDING", VisibleCols=["Expression";"Value";"Refresh"], ColWidths=[206;176;212]
-TableHeader="TargetExceptionDialog", SortCol="Name", SortOrder="ASCENDING", VisibleCols=["Name";"Value";"Address";"Description"], ColWidths=[200;100;100;372]
 WatchedExpression="rc_data", Window=Watched Data 2

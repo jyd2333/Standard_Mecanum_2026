@@ -1,4 +1,5 @@
 #include "fifo.h"
+#include "crc_ref.h"
 
 FIFOQueue rs485_master_fifo= {{0}, 0, 0};
 FIFOQueue rs485_slaver_fifo= {{0}, 0, 0};
@@ -74,6 +75,56 @@ bool FIFO_Read(FIFOQueue *fifo, uint8_t *data, uint32_t len,uint8_t head,uint8_t
     }
     fifo->head_LAST=fifo->head;
     return true;
+}
+bool FIFO_Read_FrameCRC16(FIFOQueue *fifo, uint8_t *data, uint32_t len, uint8_t head0, uint8_t head1)
+{
+    if ((fifo == NULL) || (data == NULL) || (len > FIFO_SIZE) || (len < 4u) || FIFO_IsEmpty(fifo)) {
+        return false;
+    }
+
+    uint32_t head_snapshot = fifo->head;
+    uint32_t tail_snapshot = fifo->tail;
+    uint32_t available = (head_snapshot + FIFO_SIZE - tail_snapshot) % FIFO_SIZE;
+    if (available < len) {
+        fifo->head_LAST = head_snapshot;
+        return false;
+    }
+
+    uint8_t frame_buf[FIFO_SIZE];
+    uint32_t max_scan = available - len + 1u;
+
+    for (uint32_t offset = 0; offset < max_scan; offset++) {
+        uint32_t start = (tail_snapshot + offset) % FIFO_SIZE;
+        if (fifo->buffer[start] != head0 || fifo->buffer[(start + 1u) % FIFO_SIZE] != head1) {
+            continue;
+        }
+
+        if (start + len <= FIFO_SIZE) {
+            __disable_irq();
+            memcpy(frame_buf, &fifo->buffer[start], len);
+            __enable_irq();
+        } else {
+            uint32_t first_part = FIFO_SIZE - start;
+            __disable_irq();
+            memcpy(frame_buf, &fifo->buffer[start], first_part);
+            memcpy(frame_buf + first_part, &fifo->buffer[0], len - first_part);
+            __enable_irq();
+        }
+
+        if (Verify_CRC16_Check_Sum(frame_buf, len) != FALSE) {
+            memcpy(data, frame_buf, len);
+            fifo->tail = (start + len) % FIFO_SIZE;
+            fifo->head_LAST = fifo->head;
+            return true;
+        }
+    }
+
+    {
+        uint32_t drop = available - (len - 1u);
+        fifo->tail = (tail_snapshot + drop) % FIFO_SIZE;
+    }
+    fifo->head_LAST = fifo->head;
+    return false;
 }
 bool FIFO_READ_POWER(FIFOQueue *fifo, uint8_t *data, uint32_t len){
     if (len > FIFO_SIZE || FIFO_IsEmpty(fifo)) {

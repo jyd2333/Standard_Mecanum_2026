@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include "robot_board.h"
 
-#define NUC_RECV_SIZE 28
+#define NUC_RECV_SIZE 29
 
 /* Gimbal/chassis install & limits */
 #define PITCH_POS_MAX_ECD         4650

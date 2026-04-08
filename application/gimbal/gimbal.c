@@ -35,7 +35,7 @@ static float filtered_yaw_vel = 0;            // 视觉yaw速度滤波值
 static const float yaw_vel_filter_alpha = 0.12f; // 速度滤波系数
 static const float yaw_vel_deadzone = 0.1f;     // 小速死区，避免噪声前馈
 extern float vision_yaw_vel; // 从视觉获取的yaw速度前馈
-const float yaw_feedforward_vel_gain = 0.1f;      // 速度前馈增益
+static float yaw_feedforward_vel_gain = -0.8f;      // 速度前馈增益
 
 const float pitch_offset = 7.7f;
 float pitch_tor_feedforward = 0;

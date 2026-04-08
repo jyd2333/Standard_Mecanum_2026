@@ -20,5 +20,6 @@ bool FIFO_IsEmpty(FIFOQueue *fifo);
 bool FIFO_Write(FIFOQueue *fifo, const uint8_t *data, uint32_t len);
 bool WritePacketToFIFO(FIFOQueue *fifo, const uint8_t *packet,uint8_t PACKET_SIZE);
 bool FIFO_Read(FIFOQueue *fifo, uint8_t *data, uint32_t len,uint8_t head,uint8_t tail);
+bool FIFO_Read_FrameCRC16(FIFOQueue *fifo, uint8_t *data, uint32_t len, uint8_t head0, uint8_t head1);
 bool FIFO_Read_chassis_ctrl(FIFOQueue *fifo, uint8_t *data, uint32_t len,uint8_t head,uint8_t add);
 #endif

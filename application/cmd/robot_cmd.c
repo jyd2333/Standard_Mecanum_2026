@@ -173,7 +173,13 @@ void HOST_RECV_CALLBACK()
 //FIFO写入函数
 static void FIFO_WRITE(uint16_t recv_len){
     DaemonReload(host_instance->daemon);         // 先喂狗
-    WritePacketToFIFO(&NUC_fifo,host_instance->comm_instance,NUC_RECV_SIZE);
+    if (recv_len == 0u) {
+        return;
+    }
+    if (recv_len > FIFO_SIZE) {
+        recv_len = FIFO_SIZE;
+    }
+    WritePacketToFIFO(&NUC_fifo, host_instance->comm_instance, (uint8_t)recv_len);
 }
 uint16_t float_to_half(float f) {
     uint32_t bit_pattern;
@@ -1202,8 +1208,17 @@ float fp_pitch,fp_yaw,pitch_vel = 0;
 //-----------------------------------------------------------------------------------------NUC版本解码-----------------------------------------------------------------------------------------//
 #define version_decode_to_angle 0.0439453125f
 void USB_Version_devode(){
-    float yaw_vel,pitch_acc,yaw_acc,crc;
-    fire_advice = fifo_pack[2];
+    float yaw_vel,pitch_acc,yaw_acc;
+    uint8_t mode;
+
+    if (fifo_pack[0] != 'C' || fifo_pack[1] != 'B') {
+        return;
+    }
+    mode = fifo_pack[2];
+    if (mode > 2u) {
+        return;
+    }
+    fire_advice = mode;
     
     fp_yaw = uint8_to_float_manual(fifo_pack + 3);
     yaw_vel = RAD_2_DEGREE * uint8_to_float_manual(fifo_pack + 7);
@@ -1211,7 +1226,6 @@ void USB_Version_devode(){
     fp_pitch = uint8_to_float_manual(fifo_pack + 15);
     pitch_vel = uint8_to_float_manual(fifo_pack + 19);
     pitch_acc = uint8_to_float_manual(fifo_pack + 23);
-    crc = uint8_to_float_manual(fifo_pack + 27);
     // 将视觉yaw速度作为前馈
     vision_yaw_vel = yaw_vel;
     if (fire_advice == 0)
@@ -1408,10 +1422,9 @@ static void RobotCMDTaskChassisBoard(void)
 static void RobotCMDTaskGimbalBoard(void)
 {
     
-    FIFO_state = FIFO_Read(&NUC_fifo, fifo_pack, NUC_RECV_SIZE, 'C', 0XFF);
-    if (FIFO_state) 
+    FIFO_state = FIFO_Read_FrameCRC16(&NUC_fifo, fifo_pack, NUC_RECV_SIZE, 'C', 'B');
+    if (FIFO_state)
         USB_Version_devode();
-       
         
 
     if (FIFO_Read_chassis_ctrl(&rs485_master_fifo, chasssis_update_data, UNICOMM_UPLOAD_FRAME_LEN, UNICOMM_FRAME_HEAD, UNICOMM_FRAME_TYPE_UPLOAD) &&
