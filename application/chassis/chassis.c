@@ -110,6 +110,7 @@ static float friction_lf_state = 0.0f;
 static float friction_rf_state = 0.0f;
 static float friction_lb_state = 0.0f;
 static float friction_rb_state = 0.0f;
+static float rotate_vxy_scale_state = 1.0f;
 
 /*
  * 麦轮力控参数：
@@ -441,12 +442,70 @@ static void updateAllWheelsFriction(float velocity_cmd_lf, float velocity_cmd_rf
     // 调试输出
     
 }
+
+static float max_abs4(float a, float b, float c, float d)
+{
+    float max_abs = fabsf(a);
+    float tmp = fabsf(b);
+    if (tmp > max_abs)
+        max_abs = tmp;
+    tmp = fabsf(c);
+    if (tmp > max_abs)
+        max_abs = tmp;
+    tmp = fabsf(d);
+    if (tmp > max_abs)
+        max_abs = tmp;
+    return max_abs;
+}
+
+static float RotateModeTranslateScale(float rot_lf, float rot_rf, float rot_lb, float rot_rb,
+                                      float trans_lf, float trans_rf, float trans_lb, float trans_rb)
+{
+    float target_scale = 1.0f;
+
+    if (chassis_cmd_recv.chassis_mode == CHASSIS_ROTATE) {
+        const float rot_peak = max_abs4(rot_lf, rot_rf, rot_lb, rot_rb);
+        const float trans_peak = max_abs4(trans_lf, trans_rf, trans_lb, trans_rb);
+
+        if (trans_peak > 1e-3f) {
+            float wheel_headroom = CHASSIS_ROTATE_WHEEL_REF_LIMIT - rot_peak * CHASSIS_ROTATE_WZ_RESERVE_RATIO;
+            if (wheel_headroom < 0.0f)
+                wheel_headroom = 0.0f;
+
+            target_scale = wheel_headroom / (trans_peak * CHASSIS_ROTATE_VXY_POWER_COEF);
+            if (target_scale > 1.0f)
+                target_scale = 1.0f;
+            if (target_scale < CHASSIS_ROTATE_VXY_MIN_SCALE)
+                target_scale = CHASSIS_ROTATE_VXY_MIN_SCALE;
+        }
+
+        rotate_vxy_scale_state += CHASSIS_ROTATE_VXY_SCALE_FILTER_ALPHA * (target_scale - rotate_vxy_scale_state);
+    } else {
+        rotate_vxy_scale_state = 1.0f;
+    }
+
+    return rotate_vxy_scale_state;
+}
+
 static void MecanumCalculate()
 {
-    vt_lf = chassis_vx + chassis_vy + chassis_cmd_recv.wz * LF_CENTER;
-    vt_rf = -chassis_vx + chassis_vy + chassis_cmd_recv.wz * RF_CENTER;
-    vt_lb = chassis_vx - chassis_vy + chassis_cmd_recv.wz * LB_CENTER;
-    vt_rb = -chassis_vx - chassis_vy + chassis_cmd_recv.wz * RB_CENTER;
+    const float rot_lf = chassis_cmd_recv.wz * LF_CENTER;
+    const float rot_rf = chassis_cmd_recv.wz * RF_CENTER;
+    const float rot_lb = chassis_cmd_recv.wz * LB_CENTER;
+    const float rot_rb = chassis_cmd_recv.wz * RB_CENTER;
+
+    const float trans_lf = chassis_vx + chassis_vy;
+    const float trans_rf = -chassis_vx + chassis_vy;
+    const float trans_lb = chassis_vx - chassis_vy;
+    const float trans_rb = -chassis_vx - chassis_vy;
+
+    const float trans_scale = RotateModeTranslateScale(rot_lf, rot_rf, rot_lb, rot_rb,
+                                                       trans_lf, trans_rf, trans_lb, trans_rb);
+
+    vt_lf = rot_lf + trans_lf * trans_scale;
+    vt_rf = rot_rf + trans_rf * trans_scale;
+    vt_lb = rot_lb + trans_lb * trans_scale;
+    vt_rb = rot_rb + trans_rb * trans_scale;
 
     updateAllWheelsFriction(vt_lf, vt_rf, vt_lb, vt_rb);
 }

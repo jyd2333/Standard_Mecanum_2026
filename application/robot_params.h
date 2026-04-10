@@ -43,6 +43,11 @@
 
 /* Control gains & limits */
 #define CHASSIS_SPEED 60000
+#define CHASSIS_ROTATE_WHEEL_REF_LIMIT        ((float)CHASSIS_SPEED)//轮速预算上限
+#define CHASSIS_ROTATE_WZ_RESERVE_RATIO       1.05f//旋转预留系数（越大越保 wz）
+#define CHASSIS_ROTATE_VXY_POWER_COEF         1.30f//平移“耗预算权重”（越大越压平移）
+#define CHASSIS_ROTATE_VXY_MIN_SCALE          0.08f//平移最小保留比例
+#define CHASSIS_ROTATE_VXY_SCALE_FILTER_ALPHA 0.20f//缩放平滑系数
 #define YAW_K         0.00025f
 #define PITCH_K       0.000004f
 
