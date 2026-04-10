@@ -211,6 +211,7 @@ typedef struct
     float yaw_angleP;
     float yaw_angleD;
     float yaw_speedP;
+    float yaw_motor_real_current;
     float speedFeed;
 } Gimbal_Upload_Data_s;
 
@@ -259,6 +260,7 @@ typedef struct
     float chassis_pitch_angle;
     float chassis_yaw_gyro;
     float initial_speed;
+    float yaw_motor_real_current;
     float yaw_angle_pidout;
     version_color color;
 } Chassis_Upload_Data_s_uart;

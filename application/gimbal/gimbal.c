@@ -467,6 +467,7 @@ void GimbalTask()
     gimbal_feedback_data.pitch_ecd                    = 0;//pitch_motor->measure.ecd;
     gimbal_feedback_data.yaw_total_angle              = yaw_motor->measure.total_angle;
     gimbal_feedback_data.pitch_total_angle            = 0;//pitch_motor->measure.total_angle;
+    gimbal_feedback_data.yaw_motor_real_current       = (float)yaw_motor->measure.real_current;
     
 
     //yaw_current_feedforward = YawFeedForwardCalculate(yaw_motor->motor_controller.angle_PID.Err);

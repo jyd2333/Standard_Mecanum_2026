@@ -79,7 +79,8 @@ HostInstance *rs485_master_instance; // 接口
 HostInstance *rs485_slaver_instance; // 接口
 // 这里的四元数以wxyz的顺序
 static uint8_t vision_recv_data[9];  // 从视觉上位机接收的数据-绝对角度，第9个字节作为识别到目标的标志位
-uint8_t vision_send_data[43]; // 给视觉上位机发送的数据
+#define NUC_SEND_SIZE 47u
+uint8_t vision_send_data[NUC_SEND_SIZE]; // 给视觉上位机发送的数据
 uint8_t chasssis_ctrl_data[UNICOMM_CTRL_FRAME_LEN];
 uint8_t chasssis_update_data[UNICOMM_UPLOAD_FRAME_LEN];
 static Publisher_t *gimbal_cmd_pub  ;            // 云台控制消息发布者
@@ -875,7 +876,6 @@ static void RemoteControlSet()
 
 ramp_t fb_ramp;
 ramp_t lr_ramp;
-ramp_t slow_ramp;
 
 /**
  * @brief 键盘设定速度
@@ -888,45 +888,59 @@ static void ChassisSet()
     // chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
     // chassis_cmd_send.power_limit=100;//临时更改
 
-    // 底盘移动
-    static float current_speed_x = 0;
-    static float current_speed_y = 0;
-    // 前后移动（带 ramp，避免速度突变）
-    // 防止逃跑时关小陀螺按Ctrl进入慢速模式
+    // 底盘平移：使用“目标速度变化触发斜坡重置”的方式，避免按下/松开/反向时突变
+    static float current_speed_x = 0.0f;
+    static float current_speed_y = 0.0f;
+    static float target_speed_x_last = 0.0f;
+    static float target_speed_y_last = 0.0f;
+    static float start_speed_x = 0.0f;
+    static float start_speed_y = 0.0f;
+    float target_speed_x = 0.0f;
+    float target_speed_y = 0.0f;
+    // 仅在键盘小陀螺模式下降低平移输入权重，减少平移对旋转的拖慢
+    const float keyboard_rotate_translate_scale = 0.2f;
+
+    // 前后方向目标
     if (rc_data[TEMP].key[KEY_PRESS].w) {
-        chassis_cmd_send.vx = (current_speed_x + (CHASSIS_SPEED - current_speed_x) * ramp_calc(&fb_ramp)); // vx鏂瑰悜寰呮祴
-        ramp_init(&slow_ramp, RAMP_TIME);                                                                  // 2000
+        target_speed_x = CHASSIS_SPEED;
     } else if (rc_data[TEMP].key[KEY_PRESS].s) {
-        chassis_cmd_send.vx = (current_speed_x + (-CHASSIS_SPEED - current_speed_x) * ramp_calc(&fb_ramp));
-        ramp_init(&slow_ramp, RAMP_TIME);
-    } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].w) { // 防止逃跑关小陀螺进入慢速移动
-        chassis_cmd_send.vx = (current_speed_x + (4000 - current_speed_x) * ramp_calc(&slow_ramp));
-        ramp_init(&fb_ramp, RAMP_TIME);
+        target_speed_x = -CHASSIS_SPEED;
+    } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].w) {
+        target_speed_x = 600.0f;
     } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].s) {
-        chassis_cmd_send.vx = (current_speed_x + (-4000 - current_speed_x) * ramp_calc(&slow_ramp));
-        ramp_init(&fb_ramp, RAMP_TIME);
-    } else {
-        chassis_cmd_send.vx = 0;
-        ramp_init(&fb_ramp, RAMP_TIME);
+        target_speed_x = -600.0f;
     }
 
-    // 左右移动（带 ramp，避免速度突变）
+    // 左右方向目标
     if (rc_data[TEMP].key[KEY_PRESS].a) {
-        chassis_cmd_send.vy = (current_speed_y + (CHASSIS_SPEED - current_speed_y) * ramp_calc(&lr_ramp));
-        ramp_init(&slow_ramp, RAMP_TIME);
+        target_speed_y = CHASSIS_SPEED;
     } else if (rc_data[TEMP].key[KEY_PRESS].d) {
-        chassis_cmd_send.vy = (current_speed_y + (-CHASSIS_SPEED - current_speed_y) * ramp_calc(&lr_ramp));
-        ramp_init(&slow_ramp, RAMP_TIME);
+        target_speed_y = -CHASSIS_SPEED;
     } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].a) {
-        chassis_cmd_send.vy = (current_speed_y + (+4000 - current_speed_y) * ramp_calc(&fb_ramp));
-        ramp_init(&lr_ramp, RAMP_TIME);
+        target_speed_y = 30.0f;
     } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].d) {
-        chassis_cmd_send.vy = (current_speed_y + (-4000 - current_speed_y) * ramp_calc(&fb_ramp));
-        ramp_init(&lr_ramp, RAMP_TIME);
-    } else {
-        chassis_cmd_send.vy = 0;
+        target_speed_y = -30.0f;
+    }
+
+    // 与 KeyGetMode 的 C 键切换规则保持一致：奇数次按下为小陀螺模式
+    if ((rc_data[TEMP].key_count[KEY_PRESS][Key_C] % 2u) == 1u) {
+        target_speed_x *= keyboard_rotate_translate_scale;
+        target_speed_y *= keyboard_rotate_translate_scale;
+    }
+
+    if (target_speed_x != target_speed_x_last) {
+        target_speed_x_last = target_speed_x;
+        start_speed_x = current_speed_x;
+        ramp_init(&fb_ramp, RAMP_TIME);
+    }
+    if (target_speed_y != target_speed_y_last) {
+        target_speed_y_last = target_speed_y;
+        start_speed_y = current_speed_y;
         ramp_init(&lr_ramp, RAMP_TIME);
     }
+
+    chassis_cmd_send.vx = start_speed_x + (target_speed_x - start_speed_x) * ramp_calc(&fb_ramp);
+    chassis_cmd_send.vy = start_speed_y + (target_speed_y - start_speed_y) * ramp_calc(&lr_ramp);
 
     current_speed_x = chassis_cmd_send.vx;
     current_speed_y = chassis_cmd_send.vy;
@@ -1259,7 +1273,7 @@ CANInstance *nuc_Cantx;
 CAN_TxHeaderTypeDef can2_txheader;
 uint32_t can2_txmailbox;
 float chassis_wzSet,chassis_wzK;
-/* 机器人核心控制任务,200Hz频率运行(必须高于视觉发送频率) */
+/* 机器人核心控制任务，当前由 FreeRTOS 以 1ms 周期调度（约 1000Hz） */
 float refree_power_choice(uint8_t level){
     switch(level){
         case 1:
@@ -1356,6 +1370,7 @@ static void RobotCMDTaskChassisBoard(void)
 
     chassis_fetch_data_uart.chassis_pitch_angle = gimbal_fetch_data.gimbal_imu_data->output.INS_angle[1];
     chassis_fetch_data_uart.initial_speed = referee_data->ShootData.bullet_speed;
+    chassis_fetch_data_uart.yaw_motor_real_current = gimbal_fetch_data.yaw_motor_real_current;
     chassis_fetch_data_uart.color = referee_data->referee_id.Robot_Color;
     chassis_fetch_data_uart.yaw_angle_pidout = gimbal_fetch_data.yaw_angle_pidout;
 
@@ -1493,10 +1508,12 @@ static void RobotCMDTaskGimbalBoard(void)
     memcpy(vision_send_data + 23, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[1], 8);
     float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 27);
     memcpy(vision_send_data + 31, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[0], 4);
-    memcpy(&vision_send_data[35], &chassis_fetch_data_uart.initial_speed, 4);
-    Append_CRC16_Check_Sum(vision_send_data, 43);
-    vision_send_data[39] = 0x0D;
-    HostSend(host_instance, vision_send_data, 43);
+    float_to_uint8_manual(chassis_fetch_data_uart.yaw_motor_real_current, vision_send_data + 35);
+    memcpy(&vision_send_data[39], &chassis_fetch_data_uart.initial_speed, 4);
+    vision_send_data[43] = 0x0D;
+    vision_send_data[44] = 0x00;
+    Append_CRC16_Check_Sum(vision_send_data, NUC_SEND_SIZE);
+    HostSend(host_instance, vision_send_data, NUC_SEND_SIZE);
 }
 #endif
 

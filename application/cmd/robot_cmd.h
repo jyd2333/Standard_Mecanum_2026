@@ -10,7 +10,7 @@
 void RobotCMDInit();
 
 /**
- * @brief 机器人核心控制任务,200Hz频率运行(必须高于视觉发送频率)
+ * @brief 机器人核心控制任务，当前由 FreeRTOS 以 1ms 周期调度（约1000Hz）
  * 
  */
 void RobotCMDTask();

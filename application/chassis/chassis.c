@@ -111,6 +111,7 @@ static float friction_rf_state = 0.0f;
 static float friction_lb_state = 0.0f;
 static float friction_rb_state = 0.0f;
 static float rotate_vxy_scale_state = 1.0f;
+static float rotate_wz_track_ratio_state = 1.0f;
 
 /*
  * 麦轮力控参数：
@@ -458,6 +459,25 @@ static float max_abs4(float a, float b, float c, float d)
     return max_abs;
 }
 
+static float EstimateMecanumWzObs(void)
+{
+    if (motor_lf == NULL || motor_rf == NULL || motor_lb == NULL || motor_rb == NULL) {
+        return 0.0f;
+    }
+
+    const float w_lf = motor_lf->measure.speed_aps;
+    const float w_rf = motor_rf->measure.speed_aps;
+    const float w_lb = motor_lb->measure.speed_aps;
+    const float w_rb = motor_rb->measure.speed_aps;
+
+    const float wz_lf = (fabsf(LF_CENTER) > 1e-6f) ? (w_lf / LF_CENTER) : 0.0f;
+    const float wz_rf = (fabsf(RF_CENTER) > 1e-6f) ? (w_rf / RF_CENTER) : 0.0f;
+    const float wz_lb = (fabsf(LB_CENTER) > 1e-6f) ? (w_lb / LB_CENTER) : 0.0f;
+    const float wz_rb = (fabsf(RB_CENTER) > 1e-6f) ? (w_rb / RB_CENTER) : 0.0f;
+
+    return (wz_lf + wz_rf + wz_lb + wz_rb) * 0.25f;
+}
+
 static float RotateModeTranslateScale(float rot_lf, float rot_rf, float rot_lb, float rot_rb,
                                       float trans_lf, float trans_rf, float trans_lb, float trans_rb)
 {
@@ -479,9 +499,30 @@ static float RotateModeTranslateScale(float rot_lf, float rot_rf, float rot_lb, 
                 target_scale = CHASSIS_ROTATE_VXY_MIN_SCALE;
         }
 
+        // 旋转优先：若实际小陀螺角速度明显跟不上，继续下压平移权重
+        {
+            const float wz_cmd_abs = fabsf(chassis_cmd_recv.wz);
+            if (wz_cmd_abs > 100.0f) {
+                float wz_ratio = fabsf(EstimateMecanumWzObs()) / wz_cmd_abs;
+                if (wz_ratio > 1.2f)
+                    wz_ratio = 1.2f;
+                rotate_wz_track_ratio_state += 0.10f * (wz_ratio - rotate_wz_track_ratio_state);
+
+                if (rotate_wz_track_ratio_state < 0.95f) {
+                    float protect_scale = rotate_wz_track_ratio_state / 0.95f;
+                    if (protect_scale < 0.20f)
+                        protect_scale = 0.20f;
+                    target_scale *= protect_scale;
+                }
+            } else {
+                rotate_wz_track_ratio_state += 0.10f * (1.0f - rotate_wz_track_ratio_state);
+            }
+        }
+
         rotate_vxy_scale_state += CHASSIS_ROTATE_VXY_SCALE_FILTER_ALPHA * (target_scale - rotate_vxy_scale_state);
     } else {
         rotate_vxy_scale_state = 1.0f;
+        rotate_wz_track_ratio_state = 1.0f;
     }
 
     return rotate_vxy_scale_state;
@@ -970,8 +1011,6 @@ void ChassisTask()
             chassis_cmd_recv.wz = chassis_vw;
             cos_theta           = arm_cos_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD); // 矫正小陀螺偏心
             sin_theta           = arm_sin_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD);
-            chassis_cmd_recv.vx *= 0.6;
-            chassis_cmd_recv.vy *= 0.6;
             leg_mode            = LEG_ACTIVE_SUSPENSION;
             break;
             

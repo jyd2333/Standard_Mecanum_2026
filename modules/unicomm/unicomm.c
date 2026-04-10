@@ -146,7 +146,8 @@ uint16_t UniCommPackChassisUpload(const Chassis_Upload_Data_s_uart *src, uint8_t
     UniCommFloatToBytes(src->chassis_pitch_angle, dst + UPLOAD_FLOAT_BASE_INDEX + 12u);
     UniCommFloatToBytes(src->chassis_yaw_gyro, dst + UPLOAD_FLOAT_BASE_INDEX + 16u);
     UniCommFloatToBytes(src->initial_speed, dst + UPLOAD_FLOAT_BASE_INDEX + 20u);
-    UniCommFloatToBytes(src->yaw_angle_pidout, dst + UPLOAD_FLOAT_BASE_INDEX + 24u);
+    UniCommFloatToBytes(src->yaw_motor_real_current, dst + UPLOAD_FLOAT_BASE_INDEX + 24u);
+    UniCommFloatToBytes(src->yaw_angle_pidout, dst + UPLOAD_FLOAT_BASE_INDEX + 28u);
 
     dst[UPLOAD_COLOR_INDEX] = (uint8_t)src->color;
     dst[UPLOAD_CHECKSUM_INDEX] = UniCommChecksum(dst, UPLOAD_CHECKSUM_INDEX);
@@ -171,7 +172,8 @@ bool UniCommUnpackChassisUpload(const uint8_t *src, uint16_t src_len, Chassis_Up
     dst->chassis_pitch_angle = UniCommBytesToFloat(src + UPLOAD_FLOAT_BASE_INDEX + 12u);
     dst->chassis_yaw_gyro = UniCommBytesToFloat(src + UPLOAD_FLOAT_BASE_INDEX + 16u);
     dst->initial_speed = UniCommBytesToFloat(src + UPLOAD_FLOAT_BASE_INDEX + 20u);
-    dst->yaw_angle_pidout = UniCommBytesToFloat(src + UPLOAD_FLOAT_BASE_INDEX + 24u);
+    dst->yaw_motor_real_current = UniCommBytesToFloat(src + UPLOAD_FLOAT_BASE_INDEX + 24u);
+    dst->yaw_angle_pidout = UniCommBytesToFloat(src + UPLOAD_FLOAT_BASE_INDEX + 28u);
     dst->color = (version_color)src[UPLOAD_COLOR_INDEX];
     return true;
 }
