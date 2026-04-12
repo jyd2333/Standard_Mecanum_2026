@@ -10,65 +10,133 @@
  * @copyright Copyright (c) 2022
  *
  */
-
-#include "chassis.h"
-#include "robot_board.h"
-#include "robot_params.h"
-#include "robot_types.h"
-#include "dji_motor.h"
+/*------------------------------------------------------------------------------*/
+#include "chassis.h"//拿到本模块对外接口 ChassisInit()、ChassisTask()
+#include "robot_board.h"//根据 CHASSIS_BOARD / ONE_BOARD 决定编译哪部分代码。
+#include "robot_params.h"//读底盘几何参数、限位、控制宏定义等
+#include "robot_types.h"//读 Chassis_Ctrl_Cmd_s、chassis_mode_e、leg_mode_e 等类型
+#include "remote_control.h"// 读遥控器数据
+/*------------------------------------------------------------------------------*/
+#include "dji_motor.h"//分别给四个轮毂电机和两个关节电机提供驱动接口
 #include "DMmotor.h"
-#include "super_cap.h"
-#include "message_center.h"
-#include "referee_init.h"
-
-#include "general_def.h"
-#include "bsp_dwt.h"
-#include "bsp_can.h"
-#include "referee_UI.h"
-#include "rm_referee.h"
-#include "arm_math.h"
+/*------------------------------------------------------------------------------*/
+#include "super_cap.h"//超级电容和功率控制
 #include "power_calc.h"
-#include "tool.h"
-#include "remote_control.h"
-#include "ins_task.h"
+/*------------------------------------------------------------------------------*/
+#include "message_center.h"//底盘和上层命令模块通过发布/订阅通信
+/*------------------------------------------------------------------------------*/
+#include "arm_math.h"//用 CMSIS 数学库算 sin/cos 等函数
+#include "ins_task.h"//使用 IMU/INS 解算结果
+#include "tool.h"//目前仅有键盘斜坡函数
+/*------------------------------------------------------------------------------*/
+#include "referee_init.h"//裁判系统初始化
+#include "referee_UI.h"//裁判系统数据解析，提供给UI显示用
+#include "rm_referee.h"//裁判系统数据解析，提供给底盘控制用
+/*------------------------------------------------------------------------------*/
+#include "general_def.h"//一些module的通用数值型定义
+/*------------------------------------------------------------------------------*/
+#include "bsp_dwt.h"//高精度时间函数，用于计算底盘运动解算的时间间隔，进而进行积分等运算
+#include "bsp_can.h"// CAN通信接口，底盘通过CAN总线与电机、超级电容等模块通信
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 /* 根据robot_def.h中的macro自动计算的参数 */
 #define HALF_WHEEL_BASE  (WHEEL_BASE / 2.0f)     // 半轴距
 #define HALF_TRACK_WIDTH (TRACK_WIDTH / 2.0f)    // 半轮距
-#define PERIMETER_WHEEL  (RADIUS_WHEEL * 2 * PI) // 轮子周长
-
+#define PERIMETER_WHEEL  (RADIUS_WHEEL * 2 * PI) // 轮子周长(暂时未使用)
+/*给四个轮子定义索引，分别是左前、右前、右后、左后。*/
 #define LF               0
 #define RF               1
 #define RB               2
 #define LB               3
-
+/*这是一套“速度误差 -> 目标加速度 -> 车体力/力矩 -> 电机电流前馈”的参数*/
+/*
+ * 麦轮力控参数：
+ * 1) 速度误差 -> 目标加速度（P 环）
+ * 2) 目标加速度 -> 轮作用力分配
+ * 3) 轮作用力 -> 电流前馈
+ */
+#define CHASSIS_FORCE_EQ_MASS           1.0f        //等效质量，单位kg，表示底盘在进行力控时的惯性大小，数值越大底盘越不容易被加速
+#define CHASSIS_FORCE_EQ_INERTIA        0.8f        //等效转动惯量，单位kg*m^2，表示底盘在进行力控时的转动惯量大小，数值越大底盘越不容易被加速
+#define CHASSIS_FORCE_VEL_P             2.0f        //速度误差->加速度的P环增益，单位s^-1，数值越大底盘对速度误差的响应越快，但过大会导致震荡
+#define CHASSIS_FORCE_WZ_P              1.4f        //角速度误差->角加速度的P环增益，单位s^-1，数值越大底盘对角速度误差的响应越快，但过大会导致震荡
+#define CHASSIS_FORCE_ACC_LIMIT         2500.0f     //加速度限幅，单位mm/s^2，表示底盘在进行力控时的最大加速度，数值越小底盘越平稳但响应越慢
+#define CHASSIS_FORCE_WZ_ACC_LIMIT      4500.0f    //角加速度限幅，单位rad/s^2，表示底盘在进行力控时的最大角加速度，数值越小底盘越平稳但响应越慢
+#define CHASSIS_FORCE_TO_CURRENT        1.3f       //加速度->电流的转换系数，单位A/(m/s^2)，数值越大底盘的力控输出越大，但过大会导致震荡
+#define CHASSIS_FORCE_CURRENT_FF_LIMIT  3500.0f    //电流前馈限幅，单位A，表示底盘在进行力控时的最大电流前馈，数值越小底盘越平稳但响应越慢
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+#define LF_CENTER ((HALF_TRACK_WIDTH + center_gimbal_offset_x + HALF_WHEEL_BASE - center_gimbal_offset_y) * DEGREE_2_RAD)//左前轮距云台中心的夹角，单位弧度
+#define RF_CENTER ((HALF_TRACK_WIDTH - center_gimbal_offset_x + HALF_WHEEL_BASE - center_gimbal_offset_y) * DEGREE_2_RAD)//右前轮距云台中心的夹角，单位弧度
+#define LB_CENTER ((HALF_TRACK_WIDTH + center_gimbal_offset_x + HALF_WHEEL_BASE + center_gimbal_offset_y) * DEGREE_2_RAD)//左后轮距云台中心的夹角，单位弧度
+#define RB_CENTER ((HALF_TRACK_WIDTH - center_gimbal_offset_x + HALF_WHEEL_BASE + center_gimbal_offset_y) * DEGREE_2_RAD)//右后轮距云台中心的夹角，单位弧度
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+// 低速起步摩擦补偿的阈值、滞回宽度和平滑系数
+#define FRICTION_KICK_THRESHOLD 100.0f    // 低速启动阈值（度/秒）
+#define FRICTION_HYSTERESIS 30.0f          // 滞回带宽度（度/秒）
+#define FRICTION_SMOOTHING 0.2f            // 补偿平滑系数（0~1）
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 /* 底盘应用包含的模块和信息存储,底盘是单例模式,因此不需要为底盘建立单独的结构体 */
 #ifdef CHASSIS_BOARD // 如果是底盘板,使用板载IMU获取底盘转动角速度
 // #include "can_comm.h"
-
 // static CANCommInstance *chasiss_can_comm; // 双板通信CAN comm
 //attitude_t *Chassis_IMU_data;
 #endif // CHASSIS_BOARD
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 #if defined(CHASSIS_BOARD) || defined(ONE_BOARD)
 static Publisher_t *chassis_pub;                    // 用于发布底盘的数据
 static Subscriber_t *chassis_sub;                   // 用于订阅底盘的控制命令
 #endif                                              // !ONE_BOARD
 static Chassis_Ctrl_Cmd_s chassis_cmd_recv;         // 底盘接收到的控制命令
-static Chassis_Ctrl_Cmd_s_half_float chassis_cmd_recv_half_float;
-static Chassis_Upload_Data_s chassis_feedback_data; // 底盘回传的反馈数据
-
-static SuperCapInstance *supercap;                                        // 超级电容
-static DJIMotorInstance *motor_lf, *motor_rf, *motor_lb, *motor_rb; // left right forward back
-DMMotorInstance *joint_l, *joint_r;
-extern referee_info_t *referee_data_for_ui;
- uint16_t power_supdata_watch  ;
-volatile uint8_t superCap_watchdog;
+static Chassis_Ctrl_Cmd_s_half_float chassis_cmd_recv_half_float;//半精度版命令缓存，目前基本没在运行逻辑里用。
+static Chassis_Upload_Data_s chassis_feedback_data; // 底盘要回传给别的模块的数据
+static SuperCapInstance *supercap;                  // 超级电容实例指针
+static DJIMotorInstance *motor_lf, *motor_rf, *motor_lb, *motor_rb; // 四个麦轮电机对象
+DMMotorInstance *joint_l, *joint_r;                 //左右关节电机对象
+extern referee_info_t *referee_data_for_ui;         //裁判系统数据，底盘会读电源状态
+uint16_t power_supdata_watch  ;                     //电源数据监视变量，底盘每次接收到裁判系统发来的数据就更新这个变量，底盘定时器每次到达就检查这个变量，如果超过一定时间没更新就认为裁判系统掉线了
+volatile uint8_t superCap_watchdog;                 //超级电容通信看门狗
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 // 为了方便调试加入的量
 static uint8_t center_gimbal_offset_x = CENTER_GIMBAL_OFFSET_X; // 云台旋转中心距底盘几何中心的距离,前后方向,云台位于正中心时默认设为0
 static uint8_t center_gimbal_offset_y = CENTER_GIMBAL_OFFSET_Y; // 云台旋转中心距底盘几何中心的距离,左右方向,云台位于正中心时默认设为0
-
-static INS_Instance *Chassis_IMU_data; // 底盘IMU数据
-// extern INS_Instance *gimbal_IMU_data; // ???IMU????
-extern RC_ctrl_t rc_ctrl[2]; 
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+static INS_Instance *Chassis_IMU_data;              // 底盘 INS 数据指针
+// extern INS_Instance *gimbal_IMU_data;             // 云台 IMU 数据指针，底盘控制云台时需要用到云台的IMU数据
+extern RC_ctrl_t rc_ctrl[2];                         // 遥控器数据，底盘控制模式切换和一些特殊动作需要用到遥控器数据
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/* 私有函数计算的中介变量,设为静态避免参数传递的开销 */
+static float chassis_vx, chassis_vy, chassis_vw; // 将云台系的速度投影到底盘
+static float vt_lf, vt_rf, vt_lb, vt_rb;         // 底盘速度解算后的临时输出,待进行限幅
+static float kl=1;                              //左右腿长度差补偿系数，理论上应该等于右腿长度/左腿长度，但实际使用中需要调试这个值才能达到最好的效果
+extern INS_Instance *INS;                       // IMU数据指针，底盘控制时需要用到IMU数据
+int8_t sign_lf, sign_rf, sign_lb, sign_rb;      //每个轮子的摩擦补偿状态
+static float friction_lf_state = 0.0f;          //每个轮子的摩擦补偿状态，正数表示正向摩擦补偿，负数表示反向摩擦补偿，绝对值表示补偿的大小
+static float friction_rf_state = 0.0f;
+static float friction_lb_state = 0.0f;
+static float friction_rb_state = 0.0f;
+static float chassis_force_ff_lf = 0.0f;        //四个轮子的电流前馈值，会传给轮电机控制器
+static float chassis_force_ff_rf = 0.0f;
+static float chassis_force_ff_lb = 0.0f;
+static float chassis_force_ff_rb = 0.0f;
+static leg_mode_e leg_mode = LEG_ACTIVE_SUSPENSION;//腿部当前模式，默认 LEG_ACTIVE_SUSPENSION
+GPIO_InitTypeDef GPIO_InitStruct = {0};            // GPIO初始化结构体，底盘控制时需要用到GPIO输出一些信号
+volatile static float joint_l_tor_feedforward = 0, joint_r_tor_feedforward = 0;//两个关节的力矩前馈。，单位 Nm，正数表示增加正向力矩，负数表示增加反向力矩
+float length_diff,length_diff_tor;                 //左右腿长度差和长度差对应的力矩
+static float rotate_vxy_scale_state = 1.0f;        //自旋模式下，平移量缩放和跟踪质量状态。
+static float rotate_wz_track_ratio_state = 1.0f;    
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/**
+ * @brief 计算每个轮毂电机的输出,正运动学解算
+ *        用宏进行预替换减小开销,运动解算具体过程参考教程
+ */
+float vxy_k=1,super_vxy_k=2;                    //平移速度缩放系数，vxy_k 是普通模式下的，super_vxy_k 目前没实际用
+float friction_compensation_lf = 600.0f;        //四个轮子单独调的静摩擦补偿量
+float friction_compensation_rf = -750.0f;  
+float friction_compensation_lb = 110.0f;  
+float friction_compensation_rb = -100.0f;  
+// float friction_compensation_lf = 0.0f;  
+// float friction_compensation_rf = 0.0f;  
+// float friction_compensation_lb = 0.0f;  
+// float friction_compensation_rb = 0.0f;  
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 // 跟随模式底盘的pid
 // 目前没有设置单位，有些不规范，之后有需要再改
 static PIDInstance Chassis_Follow_PID = {
@@ -81,7 +149,7 @@ static PIDInstance Chassis_Follow_PID = {
     .MaxOut        = 16384,
 
 };
-
+//左右腿长度差补偿 PID，用来让左右腿长度尽量一致
 static PIDInstance Leg_Diff_PID = {
     .Kp            = 200,   // 25,//25, // 50,//70, // 4.5
     .Ki            = 0,    // 0
@@ -91,48 +159,7 @@ static PIDInstance Leg_Diff_PID = {
     .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
     .MaxOut        = 10,
 };
-
-/* 用于自旋变速策略的时间变量 */
-// static float t;
-
-/* 私有函数计算的中介变量,设为静态避免参数传递的开销 */
-static float chassis_vx, chassis_vy, chassis_vw; // 将云台系的速度投影到底盘
-static float vt_lf, vt_rf, vt_lb, vt_rb;         // 底盘速度解算后的临时输出,待进行限幅
-static float kl=1;
-extern INS_Instance *INS;
-int8_t sign_lf, sign_rf, sign_lb, sign_rb;
-static leg_mode_e leg_mode = LEG_ACTIVE_SUSPENSION;
-GPIO_InitTypeDef GPIO_InitStruct = {0};
-volatile static float joint_l_tor_feedforward = 0, joint_r_tor_feedforward = 0;
-float length_diff,length_diff_tor;
-
-static float friction_lf_state = 0.0f;
-static float friction_rf_state = 0.0f;
-static float friction_lb_state = 0.0f;
-static float friction_rb_state = 0.0f;
-static float rotate_vxy_scale_state = 1.0f;
-static float rotate_wz_track_ratio_state = 1.0f;
-
-/*
- * 麦轮力控参数：
- * 1) 速度误差 -> 目标加速度（P 环）
- * 2) 目标加速度 -> 轮作用力分配
- * 3) 轮作用力 -> 电流前馈
- */
-#define CHASSIS_FORCE_EQ_MASS           1.0f
-#define CHASSIS_FORCE_EQ_INERTIA        0.8f
-#define CHASSIS_FORCE_VEL_P             2.0f
-#define CHASSIS_FORCE_WZ_P              1.4f
-#define CHASSIS_FORCE_ACC_LIMIT         2500.0f
-#define CHASSIS_FORCE_WZ_ACC_LIMIT      4500.0f
-#define CHASSIS_FORCE_TO_CURRENT        1.3f
-#define CHASSIS_FORCE_CURRENT_FF_LIMIT  3500.0f
-
-static float chassis_force_ff_lf = 0.0f;
-static float chassis_force_ff_rf = 0.0f;
-static float chassis_force_ff_lb = 0.0f;
-static float chassis_force_ff_rb = 0.0f;
-
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 
 void ChassisInit()
 {
@@ -165,11 +192,14 @@ void ChassisInit()
             .cs_pin     = GPIO_PIN_0,
             .spi_handle = &hspi1,
         },
-        .cali_mode = BMI088_CALIBRATE_ONLINE_MODE,
+        .cali_mode = BMI088_LOAD_PRE_CALI_MODE,
         //.cali_mode = BMI088_LOAD_PRE_CALI_MODE,
         .work_mode = BMI088_BLOCK_PERIODIC_MODE,
 };
-    Chassis_IMU_data = INS_Init(BMI088Register(&config)); // IMU??????,???????????????yaw????????????????
+    Chassis_IMU_data = INS_Init(BMI088Register(&config)); 
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/*在 CHASSIS_BOARD 下配置 BMI088：PC4/PC5 作为加速度计/陀螺仪中断，TIM10 CH1 做温控加热 PWM，PA4/PB0 为 SPI 片选，载入预校准，工作在阻塞周期模式，最后INS_Init(BMI088Register(&config)) 初始化底盘 IMU*/
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 #endif
     #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
     // 四个轮子的参数一样,改tx_id和反转标志位即可
@@ -217,7 +247,7 @@ void ChassisInit()
         },
         .motor_type = M3508,
     };
-     Motor_Init_Config_s chassis_motor_config_3 = {
+    Motor_Init_Config_s chassis_motor_config_3 = {
         .can_init_config.can_handle   = &hcan1,
         .controller_param_init_config = {
             .speed_PID = {
@@ -239,7 +269,7 @@ void ChassisInit()
         },
         .motor_type = M3508,
     };
-     Motor_Init_Config_s chassis_motor_config_4 = {
+    Motor_Init_Config_s chassis_motor_config_4 = {
         .can_init_config.can_handle   = &hcan1,
         .controller_param_init_config = {
             .speed_PID = {
@@ -261,6 +291,9 @@ void ChassisInit()
         },
         .motor_type = M3508,
     };
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/*定义四份 Motor_Init_Config_s：四个轮电机都走 hcan1，控制方式都是速度闭环，反馈源都是电机自身反馈，电机型号是 M3508；四份配置的主要差别是各自绑定的 current_feedforward_ptr*/
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     //  @todo: 当前还没有设置电机的正反转,仍然需要手动添加reference的正负号,需要电机module的支持,待修改.
     chassis_motor_config_1.can_init_config.tx_id                             = 1;
     chassis_motor_config_1.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
@@ -277,7 +310,9 @@ void ChassisInit()
     chassis_motor_config_4.can_init_config.tx_id                             = 4;
     chassis_motor_config_4.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     motor_lb                                                               = DJIMotorInit(&chassis_motor_config_4);
-    
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/*tx_id = 1/2/3/4 后分别调用 DJIMotorInit()，把四个配置实例化成 motor_lf、motor_rf、motor_rb、motor_lb */
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/    
     Motor_Init_Config_s joint_motor_config = {
         .can_init_config.can_handle = &hcan2,
         .motor_type = DM_Motor,
@@ -320,19 +355,22 @@ void ChassisInit()
             },
         },
     };
-    
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+/*配置两个 DM 关节电机：走 hcan2，外环角度、内环速度，角度和角速度都不取电机自身反馈，而是取 Chassis_IMU_data->output.INS_angle[1] 和 INS_gyro[0] 这些“外部反馈”；关节控制用机体姿态做闭环*/
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     joint_motor_config.can_init_config.tx_id = 0x01;
     joint_motor_config.can_init_config.rx_id = 0x11;
     joint_motor_config.controller_setting_init_config.feedback_reverse_flag = FEEDBACK_DIRECTION_NORMAL;
     joint_motor_config.controller_param_init_config.current_feedforward_ptr = &joint_l_tor_feedforward;
     joint_l = DMMotorInit(&joint_motor_config);
-    
+    //左关节反馈方向正常，前馈绑定 joint_l_tor_feedforward，tx_id 0x01，rx_id 0x11 实例化成 joint_l
     joint_motor_config.can_init_config.tx_id = 0x02;
     joint_motor_config.can_init_config.rx_id = 0x12;
     joint_motor_config.controller_setting_init_config.feedback_reverse_flag = FEEDBACK_DIRECTION_REVERSE;
     joint_motor_config.controller_param_init_config.current_feedforward_ptr = &joint_r_tor_feedforward;
     joint_r = DMMotorInit(&joint_motor_config);
-    
+    //右关节反馈方向反向，前馈绑定 joint_r_tor_feedforward，tx_id 0x02，rx_id 0x12 实例化成 joint_r
+/*---------------------------------------------------------------------------------初始化并使能超级电容------------------------------------------------------------------------------*/
     SuperCap_Init_Config_s supercap_config = {
         .can_config = {
             .can_handle = &hcan1,
@@ -340,7 +378,7 @@ void ChassisInit()
     };
     supercap = SuperCapInit(&supercap_config);
     SuperCapEnable(supercap);
-
+/*----------------------------------------------GPIOE 的 PE13/PE9/PE11被配置成推挽输出，后面爬坡模式会用它们控制外设-------------------------------------------------------------------*/
     GPIO_InitStruct.Pin = GPIO_PIN_13|GPIO_PIN_9|GPIO_PIN_11;
     GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
@@ -350,41 +388,18 @@ void ChassisInit()
     HAL_GPIO_WritePin(GPIOE, GPIO_PIN_11, GPIO_PIN_RESET);
     // HAL_GPIO_WritePin(GPIOE, GPIO_PIN_13, GPIO_PIN_SET);
     #endif
-
+/*由于之前在 ChassisTask 的运动解算里把左右后轮的 PID 输出当成了力控前馈来用，所以它们的积分项会积累一个值，这个值在某些情况下会比较大，导致底盘在低速时震荡。这里在初始化的时候把它们清零，之后如果需要用到 PID 的积分项再根据情况调整---------------------------------*/
 
     // motor_lb->motor_controller.speed_PID.Iout=0;motor_rb->motor_controller.speed_PID.Iout=0;
     // motor_lf->motor_controller.speed_PID.Iout=0;motor_rf->motor_controller.speed_PID.Iout=0;
-
-#if defined(ONE_BOARD) || defined(CHASSIS_BOARD) // 单板控制整车,则通过pubsub来传递消息
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+#if defined(ONE_BOARD) || defined(CHASSIS_BOARD) // 单板控制整车,则通过pubsub来传递消息SubRegister("chassis_cmd", ...) 和 PubRegister("chassis_feed", ...) 完成消息通道注册
     chassis_sub = SubRegister("chassis_cmd", sizeof(Chassis_Ctrl_Cmd_s));
     chassis_pub = PubRegister("chassis_feed", sizeof(Chassis_Upload_Data_s));
  #endif // ONE_BOARD
     ;
 }
-
-#define LF_CENTER ((HALF_TRACK_WIDTH + center_gimbal_offset_x + HALF_WHEEL_BASE - center_gimbal_offset_y) * DEGREE_2_RAD)
-#define RF_CENTER ((HALF_TRACK_WIDTH - center_gimbal_offset_x + HALF_WHEEL_BASE - center_gimbal_offset_y) * DEGREE_2_RAD)
-#define LB_CENTER ((HALF_TRACK_WIDTH + center_gimbal_offset_x + HALF_WHEEL_BASE + center_gimbal_offset_y) * DEGREE_2_RAD)
-#define RB_CENTER ((HALF_TRACK_WIDTH - center_gimbal_offset_x + HALF_WHEEL_BASE + center_gimbal_offset_y) * DEGREE_2_RAD)
-/**
- * @brief 计算每个轮毂电机的输出,正运动学解算
- *        用宏进行预替换减小开销,运动解算具体过程参考教程
- */
-float vxy_k=1,super_vxy_k=2;//小陀螺wz和vx，vy的比例
-float friction_compensation_lf = 600.0f;  
-float friction_compensation_rf = -750.0f;  
-float friction_compensation_lb = 110.0f;  
-float friction_compensation_rb = -100.0f;  
-
-// float friction_compensation_lf = 0.0f;  
-// float friction_compensation_rf = 0.0f;  
-// float friction_compensation_lb = 0.0f;  
-// float friction_compensation_rb = 0.0f;  
-
-// 死区与滞回参数
-#define FRICTION_KICK_THRESHOLD 100.0f    // 低速启动阈值（度/秒）
-#define FRICTION_HYSTERESIS 30.0f          // 滞回带宽度（度/秒）
-#define FRICTION_SMOOTHING 0.2f            // 补偿平滑系数（0~1）
+/*---------------------------------------------------------------------------------------辅助函数------------------------------------------------------------------------------------*/
 
 /**
  * @brief 标准摩擦补偿：定值随指令方向变号，带智能死区
@@ -393,6 +408,7 @@ float friction_compensation_rb = -100.0f;
  * @param last_sign 上次方向状态指针（用于滞回）
  * @return 补偿力（与指令方向相反）
  */
+/*--------------------------------------1.calculateFrictionCompensation()------->2.updateAllWheelsFriction----------------------------------------------------------------------*/
 static float calculateFrictionCompensation(float velocity_cmd, float compensation, int8_t *last_sign)
 {
     //无指令时：补偿归零，确保绝对静止
@@ -422,13 +438,14 @@ static float calculateFrictionCompensation(float velocity_cmd, float compensatio
     }
     return -compensation * (float)current_sign;
 }
+/*-----------------如果命令速度几乎为 0，就把补偿清零；否则根据速度正负和滞回区决定当前方向，再返回一个“与指令方向相反符号”的固定补偿值---------------*/
 
 /**
  * @brief 更新四个轮子的摩擦补偿
  * @param velocity_cmd_* 各轮速度指令（度/秒）
  */
-static void updateAllWheelsFriction(float velocity_cmd_lf, float velocity_cmd_rf, 
-                                     float velocity_cmd_lb, float velocity_cmd_rb)
+/*----------------------------------------2.updateAllWheelsFriction()------>3.MecanumCalculate----------------------------------------------------------------------*/
+static void updateAllWheelsFriction(float velocity_cmd_lf, float velocity_cmd_rf, float velocity_cmd_lb, float velocity_cmd_rb)
 {
     
     float target_lf = calculateFrictionCompensation(velocity_cmd_lf, friction_compensation_lf, &sign_lf);
@@ -443,7 +460,9 @@ static void updateAllWheelsFriction(float velocity_cmd_lf, float velocity_cmd_rf
     // 调试输出
     
 }
+/*-----------------给四个轮子分别算摩擦补偿目标，再做一阶平滑，避免补偿突变------------------------*/
 
+/*-----------------max_abs4:取四个数里绝对值最大的一个------------------------------------------*/
 static float max_abs4(float a, float b, float c, float d)
 {
     float max_abs = fabsf(a);
@@ -458,7 +477,8 @@ static float max_abs4(float a, float b, float c, float d)
         max_abs = tmp;
     return max_abs;
 }
-
+/*-----------------返回四个数里绝对值最大的一个-------------------------*/
+/*EstimateMecanumWzObs*/
 static float EstimateMecanumWzObs(void)
 {
     if (motor_lf == NULL || motor_rf == NULL || motor_lb == NULL || motor_rb == NULL) {
@@ -477,9 +497,9 @@ static float EstimateMecanumWzObs(void)
 
     return (wz_lf + wz_rf + wz_lb + wz_rb) * 0.25f;
 }
-
-static float RotateModeTranslateScale(float rot_lf, float rot_rf, float rot_lb, float rot_rb,
-                                      float trans_lf, float trans_rf, float trans_lb, float trans_rb)
+/*---------------利用四个轮子的实际速度反推当前底盘角速度观测值------------*/
+/*------------------------------------4.RotateModeTranslateScale()---->3.MecanumCalculate----------------------------------------------------*/
+static float RotateModeTranslateScale(float rot_lf, float rot_rf, float rot_lb, float rot_rb,float trans_lf, float trans_rf, float trans_lb, float trans_rb)
 {
     float target_scale = 1.0f;
 
@@ -527,7 +547,8 @@ static float RotateModeTranslateScale(float rot_lf, float rot_rf, float rot_lb, 
 
     return rotate_vxy_scale_state;
 }
-
+/*------------------只在 CHASSIS_ROTATE 下生效。先看旋转已经占掉多少轮速余量，再决定平移量最多还能放多大；如果发现实际 wz 跟不上指令，会进一步压低平移比例，优先保自旋----------------------*/
+/*---------------------------------------------------------3.MecanumCalculate()--->核心任务ChassisTask()-------------------------------------------------*/
 static void MecanumCalculate()
 {
     const float rot_lf = chassis_cmd_recv.wz * LF_CENTER;
@@ -540,8 +561,7 @@ static void MecanumCalculate()
     const float trans_lb = chassis_vx - chassis_vy;
     const float trans_rb = -chassis_vx - chassis_vy;
 
-    const float trans_scale = RotateModeTranslateScale(rot_lf, rot_rf, rot_lb, rot_rb,
-                                                       trans_lf, trans_rf, trans_lb, trans_rb);
+    const float trans_scale = RotateModeTranslateScale(rot_lf, rot_rf, rot_lb, rot_rb,trans_lf, trans_rf, trans_lb, trans_rb);
 
     vt_lf = rot_lf + trans_lf * trans_scale;
     vt_rf = rot_rf + trans_rf * trans_scale;
@@ -550,7 +570,8 @@ static void MecanumCalculate()
 
     updateAllWheelsFriction(vt_lf, vt_rf, vt_lb, vt_rb);
 }
-
+//把底盘平移速度 chassis_vx/chassis_vy 和旋转速度 wz 分解成四个轮子的目标转速 vt_*。严格说这是“逆运动学”，虽然注释里写的是正运动学。
+//-----------------------------------5.clamp_absf()-------->8.ChassisForceControlMecanum()------>核心任务 ChassisTask()-------------------------------------------------*/
 static float clamp_absf(float value, float max_abs)
 {
     if (value > max_abs)
@@ -559,7 +580,8 @@ static float clamp_absf(float value, float max_abs)
         return -max_abs;
     return value;
 }
-
+//把一个值限制在[-max_abs, max_abs]范围内，保持符号不变
+//-----------------------------------6.ChassisForceReset()------>8.ChassisForceControlMecanum()------>核心任务 ChassisTask()-------------------------------------------------*/
 static void ChassisForceReset(void)
 {
     chassis_force_ff_lf = 0.0f;
@@ -567,7 +589,8 @@ static void ChassisForceReset(void)
     chassis_force_ff_lb = 0.0f;
     chassis_force_ff_rb = 0.0f;
 }
-
+//把四个轮子的力控前馈清零，通常在模式切换或者特殊动作结束时调用，防止残留的前馈导致底盘不受控制地动起来
+//----------------------------------7.ObserveMecanumBodySpeed()------>8.ChassisForceControlMecanum()------>核心任务 ChassisTask()-------------------------------------------------*/
 static void ObserveMecanumBodySpeed(float *vx_obs, float *vy_obs, float *wz_obs)
 {
     if (motor_lf == NULL || motor_rf == NULL || motor_lb == NULL || motor_rb == NULL) {
@@ -591,7 +614,8 @@ static void ObserveMecanumBodySpeed(float *vx_obs, float *vy_obs, float *wz_obs)
     const float wz_rb = (fabsf(RB_CENTER) > 1e-6f) ? (w_rb / RB_CENTER) : 0.0f;
     *wz_obs = (wz_lf + wz_rf + wz_lb + wz_rb) * 0.25f;
 }
-
+//根据四个轮子的实际转速反推当前底盘的平移速度 vx_obs、vy_obs 和旋转速度 wz_obs，这些观测值会被 ChassisForceControlMecanum() 用来做力控前馈计算，实现对底盘动力的闭环控制
+/*-----------------------------------8.ChassisForceControlMecanum()------>核心任务 ChassisTask()-------------------------------------------------*/
 static void ChassisForceControlMecanum(void)
 {
     float vx_obs, vy_obs, wz_obs;
@@ -623,89 +647,16 @@ static void ChassisForceControlMecanum(void)
     chassis_force_ff_lb = clamp_absf(f_lb * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
     chassis_force_ff_rb = clamp_absf(f_rb * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
 }
+//先算速度误差，再乘比例得到目标加速度，再映射成车体平移力 fx/fy 和旋转力矩 tz，最后分配到四个轮子并换算成电流前馈；这就是麦轮力控增强。
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 
-// static float clamp_absf(float value, float max_abs)
-// {
-//     if (value > max_abs)
-//         return max_abs;
-//     if (value < -max_abs)
-//         return -max_abs;
-//     return value;
-// }
 
-// static void ChassisForceReset(void)
-// {
-//     chassis_force_ff_lf = 0.0f;
-//     chassis_force_ff_rf = 0.0f;
-//     chassis_force_ff_lb = 0.0f;
-//     chassis_force_ff_rb = 0.0f;
-// }
+static ramp_t super_ramp;// 超电功率斜坡
+static float Power_Output;// 最终的功率输出值，经过能量环和电压环修正后的结果
+const float buffer_energy_loop_kp = 0.5f;// 缓冲能量环比例系数
+const float cap_voltage_loop_kp = 20.0f;// 电容电压环比例系数
 
-// static void ObserveMecanumBodySpeed(float *vx_obs, float *vy_obs, float *wz_obs)
-// {
-//     if (motor_lf == NULL || motor_rf == NULL || motor_lb == NULL || motor_rb == NULL) {
-//         *vx_obs = 0.0f;
-//         *vy_obs = 0.0f;
-//         *wz_obs = 0.0f;
-//         return;
-//     }
-
-//     const float w_lf = motor_lf->measure.speed_aps;
-//     const float w_rf = motor_rf->measure.speed_aps;
-//     const float w_lb = motor_lb->measure.speed_aps;
-//     const float w_rb = motor_rb->measure.speed_aps;
-
-//     *vx_obs = (w_lf - w_rf + w_lb - w_rb) * 0.25f;
-//     *vy_obs = (w_lf + w_rf - w_lb - w_rb) * 0.25f;
-
-//     const float wz_lf = (fabsf(LF_CENTER) > 1e-6f) ? (w_lf / LF_CENTER) : 0.0f;
-//     const float wz_rf = (fabsf(RF_CENTER) > 1e-6f) ? (w_rf / RF_CENTER) : 0.0f;
-//     const float wz_lb = (fabsf(LB_CENTER) > 1e-6f) ? (w_lb / LB_CENTER) : 0.0f;
-//     const float wz_rb = (fabsf(RB_CENTER) > 1e-6f) ? (w_rb / RB_CENTER) : 0.0f;
-//     *wz_obs = (wz_lf + wz_rf + wz_lb + wz_rb) * 0.25f;
-// }
-
-// static void ChassisForceControlMecanum(void)
-// {
-//     float vx_obs, vy_obs, wz_obs;
-//     ObserveMecanumBodySpeed(&vx_obs, &vy_obs, &wz_obs);
-
-//     /* 速度误差闭环为目标加速度（RMCS 5.2.4） */
-//     const float ax_cmd = clamp_absf((chassis_vx - vx_obs) * CHASSIS_FORCE_VEL_P, CHASSIS_FORCE_ACC_LIMIT);
-//     const float ay_cmd = clamp_absf((chassis_vy - vy_obs) * CHASSIS_FORCE_VEL_P, CHASSIS_FORCE_ACC_LIMIT);
-//     const float az_cmd = clamp_absf((chassis_cmd_recv.wz - wz_obs) * CHASSIS_FORCE_WZ_P, CHASSIS_FORCE_WZ_ACC_LIMIT);
-
-//     /* 目标加速度映射到底盘平移力和旋转力矩（RMCS 5.2.5） */
-//     const float fx = CHASSIS_FORCE_EQ_MASS * ax_cmd;
-//     const float fy = CHASSIS_FORCE_EQ_MASS * ay_cmd;
-//     const float tz = CHASSIS_FORCE_EQ_INERTIA * az_cmd;
-
-//     float lever = (fabsf(LF_CENTER) + fabsf(RF_CENTER) + fabsf(LB_CENTER) + fabsf(RB_CENTER)) * 0.25f;
-//     if (lever < 1e-3f)
-//         lever = 1.0f;
-//     const float fr = tz / lever;
-
-//     const float f_lf = 0.25f * ( fx + fy + fr);
-//     const float f_rf = 0.25f * (-fx + fy + fr);
-//     const float f_lb = 0.25f * ( fx - fy + fr);
-//     const float f_rb = 0.25f * (-fx - fy + fr);
-
-//     /* 轮作用力映射到电机电流前馈 */
-//     chassis_force_ff_lf = clamp_absf(f_lf * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
-//     chassis_force_ff_rf = clamp_absf(f_rf * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
-//     chassis_force_ff_lb = clamp_absf(f_lb * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
-//     chassis_force_ff_rb = clamp_absf(f_rb * CHASSIS_FORCE_TO_CURRENT, CHASSIS_FORCE_CURRENT_FF_LIMIT);
-// }
-
-static ramp_t super_ramp;
-static float Power_Output;
-const float buffer_energy_loop_kp = 0.5f;
-const float cap_voltage_loop_kp = 20.0f;
-/**
- * @brief 超电控制算法
- *
- *
- */
+/*---------------9.Super_Cap_control---->核心任务 ChassisTask()-------------------*/
  void Super_Cap_control()
  {
     float buffer_power_rectification, cap_power_rectification;
@@ -742,98 +693,100 @@ const float cap_voltage_loop_kp = 20.0f;
     DJIMotorSetRef(motor_lb, vt_lb);
     DJIMotorSetRef(motor_rb, vt_rb);
  }
+//power_limit 起步，再根据裁判系统回传的 power_buffer 做一轮修正；如果超级电容在线，再根据电容电压是否偏离目标继续修正；减掉一部分静态功耗后，把结果送进 PowerControlupdate()；最后把四个轮子的目标转速 vt_* 写给电机
 
 // 获取功率裆位
- static void Power_get()
- {
-     //cap->cap_msg_g.power_limit = chassis_cmd_recv.power_limit - 30 + 30 * (cap->cap_msg_s.CapVot - 17.0f) / 6.0f;
- }
-extern Power_Data_s power_data; // 电机功率数据;
-extern float power_value;
-uint64_t can_send_count=0;
-float offset_angle_watch;
-float text_vx=0;
-static float freequence = 0,freequence_last=0; 
-extern float half_to_float(uint16_t half);
-extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
- float follow_kp,follow_kd;
-float super_speed=10000;
-float textkd=6,text_speed=10000;
-static float getRotato_K(uint8_t level){
-    switch(level){
-        case 1:
-            return textkd;
-            break;
-        case 2:
-            return 75;
-            break;
-            case 3:
-            return 80;
-            break;
-            case 4:
-            return 85;
-            break;
-            case 5:
-            return 90;
-            break;
-            case 6:
-            return 95;
-            break;
-            case 7:
-            return 100;
-            break;
-            case 8:
-            return 105;
-            break;
-            case 9:
-            return 110;
-            break;
-            case 10:
-            return 120;
-            break;
-        default:
-            return 100;
-}
-}
-extern uint16_t powerLim;
 
-static float getWzspeed(uint16_t powerLimit){
-    switch (powerLimit){
-        case 70://------------------
-            return 3500;
-        break;
-        case 75:
-        return 3750;
-        break;
-        case 80://------------------
-                return 4000;
-        break;
-        case 85:
-        return 4175;
-        break;
-        case 90:
-        return 4350;
-        break;
-        case 95:
-        return 4525;
-        break;
-        case 100://------------------
-        return 4700;
-        break;
-        case 105:
-        return 4900;
-        break;
-        case 110:
-        return 5100;
-        break;
-        case 120://------------------
-        return 5300;
-        break;
-        default:
-        return 3000;
-        break;
-    }
-}
+//  static void Power_get()
+//  {
+//      //cap->cap_msg_g.power_limit = chassis_cmd_recv.power_limit - 30 + 30 * (cap->cap_msg_s.CapVot - 17.0f) / 6.0f;
+//  }
+
+// extern Power_Data_s power_data; // 电机功率数据;
+// extern float power_value;// 当前功率值
+// uint64_t can_send_count=0;// 发送计数器
+// float offset_angle_watch;
+// float text_vx=0;
+// static float freequence = 0,freequence_last=0; 
+// extern float half_to_float(uint16_t half);
+// extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
+//  float follow_kp,follow_kd;
+// float super_speed=10000;
+// float textkd=6,text_speed=10000;
+// static float getRotato_K(uint8_t level){
+//     switch(level){
+//         case 1:
+//             return textkd;
+//             break;
+//         case 2:
+//             return 75;
+//             break;
+//             case 3:
+//             return 80;
+//             break;
+//             case 4:
+//             return 85;
+//             break;
+//             case 5:
+//             return 90;
+//             break;
+//             case 6:
+//             return 95;
+//             break;
+//             case 7:
+//             return 100;
+//             break;
+//             case 8:
+//             return 105;
+//             break;
+//             case 9:
+//             return 110;
+//             break;
+//             case 10:
+//             return 120;
+//             break;
+//         default:
+//             return 100;
+// }
+// }
+
+// static float getWzspeed(uint16_t powerLimit){
+//     switch (powerLimit){
+//         case 70://------------------
+//         return 3500;
+//         break;
+//         case 75:
+//         return 3750;
+//         break;
+//         case 80://------------------
+//         return 4000;
+//         break;
+//         case 85:
+//         return 4175;
+//         break;
+//         case 90:
+//         return 4350;
+//         break;
+//         case 95:
+//         return 4525;
+//         break;
+//         case 100://------------------
+//         return 4700;
+//         break;
+//         case 105:
+//         return 4900;
+//         break;
+//         case 110:
+//         return 5100;
+//         break;
+//         case 120://------------------
+//         return 5300;
+//         break;
+//         default:
+//         return 3000;
+//         break;
+//     }
+// }
 
 void joint_limit(float l_target, float r_target)
 {
@@ -849,9 +802,9 @@ void joint_limit(float l_target, float r_target)
         r_target = JOINT_RIGHT_DOWN_LIMIT;
     joint_r->ctrl.pos_set = r_target;
 }
+//把左右关节目标角度限制在机械允许范围内，再写入 joint_l->ctrl.pos_set 和 joint_r->ctrl.pos_set。
 
-
-
+extern uint16_t powerLim;
 float offset_angle_watch;
 float angle_l,angle_r;
 volatile static float angle_avg;//, tor_avg;
@@ -875,9 +828,9 @@ float safe_sqrt(float x)
     }
     return __builtin_sqrtf(x);
 }
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 
-
-/* 机器人底盘控制核心任务 */
+/*----------------------------------------------------------------------------------- 机器人底盘控制核心任务 -----------------------------------------------------------------------*/
 void ChassisTask()
 {
     // 后续增加没收到消息的处理(双板的情况)
@@ -887,10 +840,14 @@ void ChassisTask()
         HAL_CAN_Stop(&hcan1);
         HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING|CAN_IT_RX_FIFO1_MSG_PENDING);
         HAL_CAN_Start(&hcan1);
+        //先看 superCap_watchdog；如果已经掉到 0，就重启 hcan1 和接收中断，给超级电容通信“自恢复”；否则就把看门狗减 1。
 }
     else superCap_watchdog--;
 #if defined(CHASSIS_BOARD) || defined(ONE_BOARD)
     SubGetMessage(chassis_sub, &chassis_cmd_recv);
+
+
+    /*-----------------------------------------------------------------------------------------------------------------------------------------------*/
     // chassis_cmd_recv_half_float = *(Chassis_Ctrl_Cmd_s_half_float *)CANCommGet(chasiss_can_comm);
     // chassis_cmd_recv.power_limit=1000;
     // chassis_cmd_recv.chassis_power=1000;
@@ -903,7 +860,11 @@ void ChassisTask()
     //chassis_cmd_recv.offset_angle=half_to_float(chassis_cmd_recv_half_float.offset_angle);
     //chassis_cmd_recv.SuperCap_flag_from_user=chassis_cmd_recv_half_float.SuperCap_flag_from_user;
     // chassis_cmd_recv.chassis_mode=chassis_rs485_recv.chassis_mode;//chassis_cmd_recv_half_float.chassis_mode;
+    /*-----------------------------------------------------------------------------------------------------------------------------------------------*/
+
+
     // 裁判系统底盘电源位做去抖，避免单帧抖动导致瞬时无力
+    /*------------------------------------------------------------------------------------------------------------------------------------------------*/
     static uint16_t mains_power_off_cnt = 0;
     if (referee_data_for_ui->GameRobotState.mains_power_chassis_output == 0) {
         if (mains_power_off_cnt < 1000)
@@ -942,7 +903,7 @@ void ChassisTask()
         motor_lb->motor_controller.speed_PID.MaxOut = 16000;
         motor_rb->motor_controller.speed_PID.MaxOut = 16000;
     }
-
+/*-----------------------------------------------------------爬坡模式处理-------------------------------------------------------------------------------------*/
     static float offset_angle;
     static float sin_theta, cos_theta;
     static float current_speed_vw, vw_set;
@@ -960,7 +921,7 @@ void ChassisTask()
         offset_angle = 0;
     offset_angle =chassis_cmd_recv.offset_angle;
     // chassis_cmd_recv.offset_angle = 0;
-
+/*---------------------------------------------------------------------底盘模式切换核心----------------------------------------------------------------------------*/
     // 根据控制模式设定旋转速度
     switch (chassis_cmd_recv.chassis_mode) {
         case CHASSIS_NO_FOLLOW:
@@ -971,15 +932,6 @@ void ChassisTask()
             leg_mode  = LEG_ACTIVE_SUSPENSION;
             ramp_init(&rotate_ramp, 250);
             break;
-
-        // case CHASSIS_MECANUM_FORCE:
-        //     powerLim = 0;
-        //     cos_theta = 1.0f;
-        //     sin_theta = 0.0f;
-        //     leg_mode  = LEG_ACTIVE_SUSPENSION;
-        //     ramp_init(&rotate_ramp, 250);
-        //     break;
-
         case CHASSIS_FOLLOW_GIMBAL_YAW:
             powerLim = 0;
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
@@ -988,7 +940,6 @@ void ChassisTask()
             leg_mode  = LEG_ACTIVE_SUSPENSION;
             ramp_init(&rotate_ramp, 250);
             break;
-
         case CHASSIS_ROTATE: // 自旋,同时保持全向机动;当前wz维持定值,后续增加不规则的变速策略
         
         // vw_set = chassis_cmd_recv.vw_set;
@@ -1013,13 +964,14 @@ void ChassisTask()
             sin_theta           = arm_sin_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD);
             leg_mode            = LEG_ACTIVE_SUSPENSION;
             break;
-            
+        //进入小陀螺模式；如果允许用超级电容，就把目标自旋速度设成 5000，否则 3000；再通过 ramp_calc() 平滑地把当前 wz 拉到目标值
         case CHASSIS_REVERSE_ROTATE:
             chassis_cmd_recv.wz = -5000;
             cos_theta           = arm_cos_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD); // 矫正小陀螺偏心
             sin_theta           = arm_sin_f32((-chassis_cmd_recv.offset_angle /*+ 22*/) * DEGREE_2_RAD);
             leg_mode            = LEG_ACTIVE_SUSPENSION;
             break;
+        //反向小陀螺，直接给 wz=-5000
         case CHASSIS_CLIMB:
         case CHASSIS_CLIMB_WITH_PULL:
         case CHASSIS_CLIMB_WITH_PUSH:
@@ -1053,6 +1005,7 @@ void ChassisTask()
                     break;
             }
             break;
+        //仍然用跟随 PID 保持航向，但腿模式切到 LEG_CLIMB，并通过 PE9/PE11 的不同高低电平组合控制外部机构是普通爬坡、拉、还是推。
         case CHASSIS_CLIMB_RETRACT:
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
             // chassis_cmd_recv.wz = 0;
@@ -1063,8 +1016,9 @@ void ChassisTask()
             break;
         default:
             break;
+        //航向同样跟随，腿模式换成 LEG_CLIMB_RETRACT，用于回收/收腿。
     }
-
+        //决定腿的姿态控制策略
     switch(leg_mode)
     {
         case LEG_ACTIVE_SUSPENSION:
@@ -1079,6 +1033,7 @@ void ChassisTask()
             // joint_r->ctrl.tor_set = -7;
             Chassis_Follow_PID.Kp = 105;
             break;
+            //dipAngle=0，保留关节力矩前馈，跟随 PID 的 Kp 保持 105。
         case LEG_CLIMB:
             dipAngle = 0.1;
             joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
@@ -1091,6 +1046,7 @@ void ChassisTask()
             // joint_r->ctrl.tor_set = -7;
             Chassis_Follow_PID.Kp = 105;
             break;
+            //意思是让机身带一点前倾/下沉目标姿态
         case LEG_CLIMB_RETRACT:
             dipAngle = -0.1;
             joint_l->motor_settings.feedforward_flag = 0;
@@ -1103,17 +1059,19 @@ void ChassisTask()
             // joint_r->ctrl.tor_set = 6;
             Chassis_Follow_PID.Kp = 50;
             break;
+            //dipAngle=-0.1，关闭关节电流前馈，并把跟随 PID 的 Kp 降到 50，让动作更软一点。
         default:
             dipAngle = 0;
             joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             break;
     }
-
-
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+    //把左右关节编码器角度统一到同一物理方向，并扣掉安装零偏。
     angle_l = joint_l->measure.pos - l_offset;
     angle_r = -joint_r->measure.pos + r_offset;
-    angle_avg = (angle_l + angle_r) / 2;
+    angle_avg = (angle_l + angle_r) / 2;//左右关节平均角
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     // tor_avg = (joint_l->measure.tor - joint_r->measure.tor) / 2;
     // angle_measure_all[avg_count] = (angle_l + angle_r) / 2;
     // tor_measure_all[avg_count] = (joint_l->measure.tor - joint_r->measure.tor) / 2;
@@ -1131,16 +1089,20 @@ void ChassisTask()
     //     // tor_avg = tor_measure_sum / avg_count;
     //     avg_count = 0;
     // }
-    length_l_measure = -0.05814 * angle_l * angle_l + 0.2072 *angle_l + 0.107;
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+    
+    length_l_measure = -0.05814 * angle_l * angle_l + 0.2072 *angle_l + 0.107;//用二次多项式把关节角度换算成腿长
     length_r_measure = -0.05814 * angle_r * angle_r + 0.2072 *angle_r + 0.107;
-    length_measure = (length_l_measure + length_r_measure)/2;
-    length_target = length_measure - leg_p * (Chassis_IMU_data->output.INS_angle[1] - dipAngle);
-    angle_target = (-0.2072 + safe_sqrt(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);
-    angle_l_target = angle_target + l_offset;
+
+    length_measure = (length_l_measure + length_r_measure)/2;                //左右腿平均长度
+    length_target = length_measure - leg_p * (Chassis_IMU_data->output.INS_angle[1] - dipAngle);//根据当前俯仰角和目标俯仰角的偏差，修正腿长目标，本质上是“腿长调姿态
+    angle_target = (-0.2072 + safe_sqrt(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);//把目标腿长反解回目标关节角；这里用了 safe_sqrt() 防止判别式为负。
+    angle_l_target = angle_target + l_offset;//再把统一角转换回左右关节各自的命令角度
     angle_r_target = r_offset - angle_target;
 
-    length_diff = length_l_measure - length_r_measure;
-    length_diff_tor = PIDCalculate(&Leg_Diff_PID, length_diff, 0);
+    length_diff = length_l_measure - length_r_measure;//算左右腿长度差
+    length_diff_tor = PIDCalculate(&Leg_Diff_PID, length_diff, 0);//通过 PID 生成“左右腿均衡补偿力矩”
+//按三次多项式给左右腿各自的基础力矩前馈，再叠加/减去长度差修正项。
     joint_l_tor_feedforward = - 25.9625 * angle_l * angle_l * angle_l
                               + 62.3065 * angle_l * angle_l
                               - 51.3808 * angle_l
@@ -1154,43 +1116,45 @@ void ChassisTask()
     //     joint_limit(l_offset + angle_test, r_offset - angle_test);
     // else
     //     joint_limit(angle_l_target, angle_r_target);
-    joint_l->motor_controller.pid_ref = dipAngle;
+    joint_l->motor_controller.pid_ref = dipAngle;   //两个关节控制器共同跟一个“机身俯仰参考”
     joint_r->motor_controller.pid_ref = dipAngle;
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     // 根据云台和底盘的角度offset将控制量映射到底盘坐标系上
     // 底盘逆时针旋转为角度正方向;云台命令的方向以云台指向的方向为x,采用右手系(x指向正北时y在正东)
-    chassis_vx = chassis_cmd_recv.vx * cos_theta - chassis_cmd_recv.vy * sin_theta;
+    chassis_vx = chassis_cmd_recv.vx * cos_theta - chassis_cmd_recv.vy * sin_theta;//把上层命令从云台坐标系旋转到底盘坐标系
     chassis_vy = chassis_cmd_recv.vx * sin_theta + chassis_cmd_recv.vy * cos_theta;
-    chassis_vx*=vxy_k;
-    chassis_vy*=vxy_k;
+    //chassis_vx*=vxy_k;
+    //chassis_vy*=vxy_k;
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     // 根据控制模式进行正运动学解算,计算底盘输出
-    MecanumCalculate();
+    MecanumCalculate();//把 chassis_vx/chassis_vy/wz 转成四轮目标转速 vt_*，并更新摩擦补偿状态。
 
     if (chassis_cmd_recv.mecanum_force_enable && (chassis_cmd_recv.chassis_mode != CHASSIS_ZERO_FORCE))
         ChassisForceControlMecanum();
     else
         ChassisForceReset();
-
+    //如果麦轮力控开关打开，并且不处于急停模式，就执行力控计算；否则就把力控前馈清零，等于没用力控。
+/*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     // 根据裁判系统的反馈数据和电容数据对输出限幅并设定闭环参考值
-    Super_Cap_control();
-    SuperCapTask();
+    Super_Cap_control();//根据裁判系统回传的 power_buffer 和超级电容的电压，修正底盘功率输出，并把结果送进 PowerControlupdate()；最后把四个轮子的目标转速 vt_* 写给电机
+    SuperCapTask();//超级电容的通信和控制任务，确保数据更新和命令下发的时序正确；如果放在 ChassisTask() 里直接调用 SuperCap_control()，可能会因为通信延迟导致数据不同步。
 #endif                                                         // CHASSIS_BOARD || ONE_BOARD
     // 获得给电容传输的电容吸取功率等级
     // Power_get();
-
     // 给电容传输数据
     // SuperCapSend(cap, (uint8_t *)&cap->cap_msg_g);
     float cap_voltage = SuperCapGetChassisVoltage(supercap);
     uint8_t cap_online = SuperCapIsOnline(supercap);
     // 推送反馈消息
-    memcpy(&chassis_feedback_data.cap_voltage, &cap_voltage, sizeof(float));
-    memcpy(&chassis_feedback_data.cap_online_flag, &cap_online, sizeof(uint8_t));
-    memcpy(&chassis_feedback_data.chassis_power_output, &Power_Output, sizeof(float));
+    memcpy(&chassis_feedback_data.cap_voltage, &cap_voltage, sizeof(float));//把电容电压写入反馈数据结构
+    memcpy(&chassis_feedback_data.cap_online_flag, &cap_online, sizeof(uint8_t));//把电容在线状态写入反馈数据结构
+    memcpy(&chassis_feedback_data.chassis_power_output, &Power_Output, sizeof(float));//把底盘最终功率输出写入反馈数据结构
    
 #ifdef ONE_BOARD
     PubPushMessage(chassis_pub, (void *)&chassis_feedback_data);
 #endif
 #ifdef CHASSIS_BOARD
-    PubPushMessage(chassis_pub, (void *)&chassis_feedback_data);
+    PubPushMessage(chassis_pub, (void *)&chassis_feedback_data);//把反馈数据通过发布者发出去，给上层的监控界面或者其他模块用；如果是双板结构，还可以通过 CAN 把数据发给另一个板。
     // memcpy(&chassis_feedback_data.power_cal,&power_data.total_power,sizeof(float));
     // memcpy(&chassis_feedback_data.power_real,&power_value,sizeof(float));
     // memcpy(&chassis_feedback_data.angle,Chassis_IMU_data->output.INS_angle,3*sizeof(float));
