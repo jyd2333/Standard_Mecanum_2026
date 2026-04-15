@@ -1,5 +1,5 @@
 /*------------------------------------------------------------------------------*/
-#include "stdio.h"//引入基础头文件
+#include "stdio.h"//标准库
 #include <math.h>
 /*------------------------------------------------------------------------------*/
 #include "gimbal.h"//拿到本模块对外接口 GimbalInit(),GimbalTask()      
@@ -102,12 +102,12 @@ uint16_t powerLim;//根据电池电量计算出的功率限制值，单位为百
 void GimbalInit()
 {
     #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
-    // YAW
-    
+
+/*-----------------------------------------------------------YAW轴6020电机的配置，包含 PID 参数设置和 CAN 通信设置---------------------------------------------------------------*/
     Motor_Init_Config_s yaw_config = {
         .can_init_config = {
             .can_handle = &hcan1,
-            .tx_id      = 1,
+            .tx_id      = 1,                                                                                    //配置CAN发送ID,挂在can1上
         },
         .controller_param_init_config = {
             .angle_PID = {
@@ -115,9 +115,9 @@ void GimbalInit()
                 .Ki            = 1,
                 .Kd            = 0.1f,//0.13,//0.07,
                 .DeadBand      = 0.0f,
-                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
-                .IntegralLimit = 5,
-                .MaxOut = 100,
+                .Improve       = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,  //开启梯形积分、积分限幅和微分先行
+                .IntegralLimit = 5,                                                                             //积分限幅
+                .MaxOut = 100,                                                                                  //输出限幅
             },
             .speed_PID = {
                 .Kp            = 2500, // 18000, // 10500,//1000,//10000,// 11000
@@ -130,9 +130,11 @@ void GimbalInit()
                 // .CoefA=0.2,
                 // .CoefB=2,//0.3,
             },
-            .other_angle_feedback_ptr = &chassis_rs485_recv.yaw_angle,//&gimbal_IMU_data->output.INS_angle_deg[INS_YAW_ADDRESS_OFFSET], // yaw????????
+            .other_angle_feedback_ptr = &chassis_rs485_recv.yaw_angle,//yaw 角度反馈不取电机编码器，而取 chassis_rs485_recv.yaw_angle 这个“外部反馈
+            //&gimbal_IMU_data->output.INS_angle_deg[INS_YAW_ADDRESS_OFFSET], 
             // ins_task.md bodyframe
-            .other_speed_feedback_ptr = &chassis_rs485_recv.yaw_gyro,//&yaw_gyro_twoboard,//&chassis_rs485_recv.yaw_gyro-&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],//,&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],
+            .other_speed_feedback_ptr = &chassis_rs485_recv.yaw_gyro,
+            //&yaw_gyro_twoboard,//&chassis_rs485_recv.yaw_gyro-&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],//,&gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET],
             .speed_feedforward_ptr = &yaw_speed_feedforward,
             .current_feedforward_ptr = &yaw_current_feedforward,
         },
@@ -143,11 +145,13 @@ void GimbalInit()
             .close_loop_type       = ANGLE_LOOP | SPEED_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_REVERSE,
             // .feedback_reverse_flag = FEEDBACK_DIRECTION_REVERSE,
-            .feedforward_flag      = SPEED_FEEDFORWARD | CURRENT_FEEDFORWARD,  //
+            .feedforward_flag      = SPEED_FEEDFORWARD | CURRENT_FEEDFORWARD,  //把速度前馈和电流前馈指针分别绑到 yaw_speed_feedforward、yaw_current_feedforward
         },
         .motor_type = GM6020};
         yaw_motor   = DJIMotorInit(&yaw_config);
         #endif
+/*----------------------------------------------------------------------BMI088陀螺仪配置--------------------------------------------------------------------------------------*/
+//BMI088 配置，包括中断脚、加热 PID、PWM、SPI 片选、标定模式、工作模式等，最后调用 INS_Init(BMI088Register(&config)) 来初始化 IMU/INS 实例
 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
     BMI088_Init_Config_s config = {
         .acc_int_config  = {.GPIOx = GPIOC, .GPIO_Pin = GPIO_PIN_4},
@@ -177,13 +181,14 @@ void GimbalInit()
             .spi_handle = &hspi1,
         },
         //.cali_mode = BMI088_CALIBRATE_ONLINE_MODE,
-        .cali_mode = BMI088_LOAD_PRE_CALI_MODE,
-        .work_mode = BMI088_BLOCK_PERIODIC_MODE,
+        .cali_mode = BMI088_LOAD_PRE_CALI_MODE,                 //使用预校准参数，避免每次开机都要校准
+        .work_mode = BMI088_BLOCK_PERIODIC_MODE,            //工作在阻塞周期模式，后续在 INS_Task 里会设置周期和阻塞时间    
 
     };
     gimbal_IMU_data = INS_Init(BMI088Register(&config)); //初始化云台 IMU/INS 实例
+/*-----------------------------------------------------------------------------Pitch电机配置----------------------------------------------------------------------------------*/
 // PITCH
-     Motor_Init_Config_s pitch_motor_config = {//DM4310
+        Motor_Init_Config_s pitch_motor_config = {//DM4310
         .can_init_config = {
             .can_handle = &hcan1,
             .tx_id = 0x02,
@@ -209,8 +214,8 @@ void GimbalInit()
                 .IntegralLimit = 0.6,
                 .MaxOut = 1.2,
             },
-            //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
-             .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET],  //缁涘绶熸穱顔芥暭   
+            //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch
+            .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET],     //pitch角度反馈:IMU 里的 pitch 弧度
             // ??????????????,????,ins_task.md??c??bodyframe?????
             .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET],
             .speed_feedforward_ptr = &pitch_speed_feedforward,
@@ -231,15 +236,22 @@ void GimbalInit()
             },
         },
     };
-    pitch_motor = DMMotorInit(&pitch_motor_config);
+    pitch_motor = DMMotorInit(&pitch_motor_config);         //创建 DM 电机实例后先停机，避免上电立刻输出
     DMMotorStop(pitch_motor);
-
     #endif
-    // ?????total_angle???,???????,??????,???????????????
-    
-    gimbal_pub = PubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
-    gimbal_sub = SubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
+    gimbal_pub = PubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));//注册一个名为 "gimbal_feed" 的话题，用于发布云台数据，数据长度为 Gimbal_Upload_Data_s 结构体的大小
+    gimbal_sub = SubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));//注册一个名为 "gimbal_cmd" 的话题，用于订阅云台控制命令，数据长度为 Gimbal_Ctrl_Cmd_s 结构体的大小
 }
+/*------------------------------------------------------------------------辅助函数--------------------------------------------------------------------------------------------*/
+void pitch_limit(float angle)
+{
+    if(angle>PITCH_UP_LIMIT)
+        angle=PITCH_UP_LIMIT;
+    else if(angle<PITCH_DOWN_LIMIT)
+        angle=PITCH_DOWN_LIMIT;
+    pitch_motor->motor_controller.pid_ref = angle;
+}
+/*-----------------------------------------------------------------------目前未使用的前馈拟合曲线-------------------------------------------------------------------------*/
 /*
  * A nonlinear function that maps a value
  * from the range [X_MIN, -X_MAX] to the range [Y_MIN, Y_MAX].
@@ -254,13 +266,14 @@ double nonlinear(const double x) {
     const double out = (tanh(scaled) + 1.0) / 2.0;
     return out * (Y_MAX - Y_MIN) + Y_MIN;
 }
+//把 [-0.5,0.5] 非线性映射到 [-2700,3000]，本质是 tanh 形状的前馈函数，可以用来把视觉给出的 yaw 速度映射成一个前馈值，配合 PID 控制器更好地跟踪目标
 
 float PitchNonlinear(float x) {
     //return (215.65 * x -3050.0);
     return (186.0 * x - 1292.0);
 }
+//线性映射函数，把视觉给出的 pitch 速度映射成一个前馈值，参数需要根据实际情况调整
 
-// ???????????
 #define NUM_SEGMENTS 11
 
 const double coeffs[NUM_SEGMENTS][4] = {
@@ -280,56 +293,45 @@ const double coeffs[NUM_SEGMENTS][4] = {
 const double x_start[NUM_SEGMENTS] = {
     -20.0000, -19.0000, -17.7000, -11.6000, -2.5000, -1.2000, 3.0000, 14.8000, 21.2600, 26.5000, 28.4000,
 };
-
-// ??????? x ??? y ?
+//把 [-20,28.4] 范围内的输入 x 非线性映射成一个输出 y，使用 11 段三次样条插值，每段的系数存储在 coeffs 数组里，x_start 数组存储了每段的起始 x 值
 double evaluate_spline(const double x) {
     if (x < x_start[0]) {
         return coeffs[0][3];
     } else if (x > x_start[NUM_SEGMENTS - 1]) {
         return coeffs[NUM_SEGMENTS - 1][3];
     }
-
     int i;
-
-    // ??? x ??????
+    // 找到 x 落在哪一段区间内
     for (i = 0; i < NUM_SEGMENTS; i++) {
         if (x >= x_start[i] && (i == NUM_SEGMENTS - 1 || x < x_start[i + 1])) {
             break;
         }
     }
-
-    // ???? y ?
+    // 计算 x 在该段区间内的相对位置，并使用对应的系数计算输出 y
     const double dx = x - x_start[i];
     const double y = coeffs[i][0] * dx * dx * dx + coeffs[i][1] * dx * dx + coeffs[i][2] * dx + coeffs[i][3];
 
     return y;
 }
+//拟合前馈曲线的函数，输入 x 是一个角度值，输出 y 是对应的前馈电流值，使用了 11 段三次样条插值来拟合一个非线性关系，可以用来把 pitch 轴的角度误差映射成一个前馈电流值，配合 PID 控制器更好地跟踪目标
 
-static float YawFeedForwardCalculate(float direction)
-{
-    if (direction > 1e-6)
-    {
-        yaw_current_feedforward = 4000;
-    }
-    else if (direction < -1e-6)
-    {
-        yaw_current_feedforward = -4000;
-    }
-    else
-    {
-        yaw_current_feedforward = 0;
-    }
-}
+// static float YawFeedForwardCalculate(float direction)
+// {
+//     if (direction > 1e-6)
+//     {
+//         yaw_current_feedforward = 4000;
+//     }
+//     else if (direction < -1e-6)
+//     {
+//         yaw_current_feedforward = -4000;
+//     }
+//     else
+//     {
+//         yaw_current_feedforward = 0;
+//     }
+// }
 
-
-void pitch_limit(float angle)
-{
-    if(angle>PITCH_UP_LIMIT)
-        angle=PITCH_UP_LIMIT;
-    else if(angle<PITCH_DOWN_LIMIT)
-        angle=PITCH_DOWN_LIMIT;
-    pitch_motor->motor_controller.pid_ref = angle;
-}
+/*----------------------------------------------------------------------- yaw 电流前馈和视觉 PID 中间层------------------------------------------------------------------------*/
 // static PIDInstance YAW_version_PID = {
 //     .Kp            = 1,   // 25,//25, // 50,//70, // 4.5
 //     .Ki            = 0,    // 0
@@ -350,6 +352,7 @@ void pitch_limit(float angle)
 //     .MaxOut        = 30,
 //     .Output_LPF_RC=0.7,
 // };
+/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 float nuc_version_control[2];
 // float filiter(float input){
 //     static float alpha=1,input_last;
@@ -358,7 +361,7 @@ float nuc_version_control[2];
 //     return output;
 // }
 float yaw_feedforward_angleErrmax=10,yaw_feedforward_max=3200; //
-/* ????????????????????,?????????????IMU????,??????????????? */
+
 // float fpv_pitch_test=0 , telescope_test=0;
 uint16_t pitch_test=0;
 uint8_t fpv_state=0;//0:rise 1:down 2:ready
@@ -369,15 +372,12 @@ extern uint8_t fpv_pos ;//0:normal 1:lob
 extern float pitch_vel;
 void GimbalTask()
 {
-    // ??????????????
-    // ????????閿熸枻鎷???????????
-    SubGetMessage(gimbal_sub, &gimbal_cmd_recv);
-
+    
+    SubGetMessage(gimbal_sub, &gimbal_cmd_recv);//从消息中心取最新 gimbal_cmd，写到 gimbal_cmd_recv
+/*---------------------------------------------旧的 yaw 电流前馈和视觉 PID 中间层，全部停用-----------------------------------------------------------------------------*/
     // yaw_current_feedforward=yaw_feedforward_max*(yaw_motor->motor_controller.angle_PID.Err/yaw_feedforward_angleErrmax);//angleErr??????4000
     // if(yaw_current_feedforward>yaw_feedforward_max)yaw_current_feedforward=yaw_feedforward_max;
     // else if(yaw_current_feedforward<-yaw_feedforward_max)yaw_current_feedforward=-yaw_feedforward_max;
-
-    //------------------------------------------------------------------------
     // gimbal_cmd_recv.pitch_version=filiter(gimbal_cmd_recv.pitch_version);
     // gimbal_cmd_recv.yaw_version=filiter(gimbal_cmd_recv.yaw_version);
     // if(gimbal_cmd_recv.nuc_mode){
@@ -385,7 +385,7 @@ void GimbalTask()
     //     nuc_version_control[1]=PIDCalculate(&YAW_version_PID,gimbal_cmd_recv.yaw_version,0);
     // }
     // else memset(nuc_version_control,0,sizeof(nuc_version_control));
-    // @todo:???????????????????,??????????????IMU??????????????????????,yaw?????offset??????????????
+/*-------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     // 
     #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)        
     // yaw_gyro_twoboard=chassis_rs485_recv.yaw_gyro-gimbal_IMU_data->INS_data.INS_gyro[INS_YAW_ADDRESS_OFFSET];
@@ -400,14 +400,15 @@ void GimbalTask()
     // else yaw_motor->motor_controller.angle_PID.Kd=0.13;
     // if(gimbal_cmd_recv.yaw_speedKp)yaw_motor->motor_controller.speed_PID.Kp=gimbal_cmd_recv.yaw_speedKp;
     // else yaw_motor->motor_controller.speed_PID.Kp=3000;
+/*-------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     switch (gimbal_cmd_recv.gimbal_mode) {
-        // ??
+        // 停机模式，yaw 和 pitch 轴都停机，不使用任何前馈，电机不输出力矩
         case GIMBAL_ZERO_FORCE:
             DJIMotorStop(yaw_motor);          
             // DJIMotorStop(pitch_motor);
             break;
-        // ?????????????,???????yaw?????offset??????????????????
-        case GIMBAL_GYRO_MODE: // ?????????????        
+        // 视觉模式，yaw 轴使用视觉前馈，pitch 轴不使用前馈，完全由 PID 控制器根据 IMU 反馈来控制
+        case GIMBAL_GYRO_MODE: // 这个模式下 yaw 轴使用视觉前馈，pitch 轴不使用前馈，完全由 PID 控制器根据 IMU 反馈来控制     
             DJIMotorEnable(yaw_motor);
             DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP, OTHER_FEED);
             DJIMotorChangeFeed(yaw_motor,SPEED_LOOP, OTHER_FEED);
@@ -415,27 +416,25 @@ void GimbalTask()
             if (gimbal_cmd_recv.nuc_mode == version_control)
             {
                 float raw_yaw_vel = 0;
-                // 閼奉亞鐎Ο鈥崇础閿涙矮濞囬悽銊潒鐟欏褰佹笟娑氭畱yaw闁喎瀹虫担婊€璐熼崜宥夘洯
+                // 根据编译选项选择 yaw 速度的来源，如果是 ONE_BOARD 或 GIMBAL_BOARD 就直接用视觉给出的 yaw 速度，如果是 CHASSIS_BOARD 就用串口收到的 yaw 速度
                 #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
-                    // 閸楁洘婢橀幋鏉噄mbal閺夋寧膩瀵骏绱版禒宥禨B閹恒儲鏁归惃鍕潒鐟欏鏆熼幑顔垮箯閸欐潾aw闁喎瀹?
-                    raw_yaw_vel = vision_yaw_vel;
-                #elif defined(CHASSIS_BOARD)
-                    // 閸欏本婢樻惔鏇犳磸濡€崇础閿涙矮绮燫S485閹恒儲鏁归惃鍒mbal閺夋寧鏆熼幑顔垮箯閸欐潾aw闁喎瀹?
+                raw_yaw_vel = vision_yaw_vel;//视觉给出的 yaw 速度，单位是度每秒
+                #elif defined(CHASSIS_BOARD)//chassis_rs485_recv.yaw_gyro 就是串口收到的 yaw 速度，单位是度每秒
                     raw_yaw_vel = chassis_rs485_recv.yaw_vel;
                 #endif
 
-                // 娴ｅ酣鈧碍鎶ゅ▔顫礉閹舵垵鍩楃憴鍡氼潕/闁俺顔嗘稉顓犳畱妤傛﹢顣堕崳顏勶紣
+                // 对原始 yaw 速度进行一阶低通滤波，得到滤波后的 yaw 速度，单位还是度每秒
                 filtered_yaw_vel += yaw_vel_filter_alpha * (raw_yaw_vel - filtered_yaw_vel);
 
-                // 鐏忓繘鈧喐顒撮崠鐚寸礉闁灝鍘ゅ顔肩毈濞夈垹濮╂禍褏鏁撻崜宥夘洯閹垫澘濮?
+                // 如果滤波后的 yaw 速度绝对值小于死区阈值，就把它置零，避免微小的噪声引起不必要的前馈
                 if (fabsf(filtered_yaw_vel) < yaw_vel_deadzone) {
                     filtered_yaw_vel = 0.0f;
                 }
 
-                yaw_speed_feedforward = filtered_yaw_vel * yaw_feedforward_vel_gain;
+                yaw_speed_feedforward = filtered_yaw_vel * yaw_feedforward_vel_gain;//把滤波后的 yaw 速度乘以一个负的增益，得到 yaw 速度前馈值，单位是电流值，可以根据实际情况调整增益的数值
 
                 float yaw_error = gimbal_cmd_recv.yaw_version - *yaw_motor->motor_controller.other_angle_feedback_ptr;
-                // 婢跺嫮鎮婄憴鎺戝鐠恒劏绉洪敍鍩?80鎺抽敍?
+                // 为了避免 yaw 轴在 0/360 度附近来回切换导致的误差过大，进行一个特殊处理，如果误差超过 180 度，就加减 360 度让它变成一个较小的误差
                 if (yaw_error > 180.0f)
                 {
                     gimbal_cmd_recv.yaw_version = *yaw_motor->motor_controller.other_angle_feedback_ptr - 360.0 + yaw_error;
@@ -449,34 +448,30 @@ void GimbalTask()
             }
             else
             {
-                // 闂堢偠鍤滈惉鍕佸蹇ョ窗缁備胶鏁ら崜宥夘洯
-                yaw_speed_feedforward = 0;
+                yaw_speed_feedforward = 0;//如果不是自瞄模式，就不使用视觉前馈，yaw_speed_feedforward 置零
                 //yaw_current_feedforward = 0;
-                DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw);
+                DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw);// yaw 角度参考直接来自命令，单位是度，云台会尽力把 yaw 轴转到这个角度
             }
             break;
         case GIMBAL_MOTOR_MODE:
-            DJIMotorEnable(yaw_motor);
-            DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP,MOTOR_FEED);
-            DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);
-            DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw??pitch????robot_cmd?閿熸枻鎷???????????
+            DJIMotorEnable(yaw_motor);//电机使能
+            DJIMotorChangeFeed(yaw_motor,ANGLE_LOOP,MOTOR_FEED);//把 yaw 轴的外环和内环的反馈源都切换成电机编码器，这样就不使用视觉前馈了，完全由电机自己根据编码器反馈来控制
+            DJIMotorOuterLoop(yaw_motor, ANGLE_LOOP);//开启 yaw 轴的角度环控制
+            DJIMotorSetRef(yaw_motor, gimbal_cmd_recv.yaw); // yaw 角度参考直接来自命令，单位是度，云台会尽力把 yaw 轴转到这个角度
         break;
         default:
             break;
     }
-    
-
-
+/*-------------------------把 yaw 角度环输出、IMU 指针、单圈角、ecd、总角度、实际电流塞进 gimbal_feedback_data，供别的模块读取------------------------------------------------------*/
     gimbal_feedback_data.yaw_angle_pidout             =yaw_motor->motor_controller.angle_PID.Output;
     gimbal_feedback_data.gimbal_imu_data              = gimbal_IMU_data;
-    gimbal_feedback_data.yaw_motor_single_round_angle = (uint16_t)yaw_motor->measure.angle_single_round; // ???????
+    gimbal_feedback_data.yaw_motor_single_round_angle = (uint16_t)yaw_motor->measure.angle_single_round; // yaw 电机的单圈角度，单位是编码器单位，0-8191 对应 0-360 度
     gimbal_feedback_data.yaw_ecd                      = yaw_motor->measure.ecd;
     gimbal_feedback_data.pitch_ecd                    = 0;//pitch_motor->measure.ecd;
     gimbal_feedback_data.yaw_total_angle              = yaw_motor->measure.total_angle;
     gimbal_feedback_data.pitch_total_angle            = 0;//pitch_motor->measure.total_angle;
     gimbal_feedback_data.yaw_motor_real_current       = (float)yaw_motor->measure.real_current;
-    
-
+/*-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     //yaw_current_feedforward = YawFeedForwardCalculate(yaw_motor->motor_controller.angle_PID.Err);
     #endif
     #if defined(ONE_BOARD) || defined(GIMBAL_BOARD)
@@ -487,46 +482,43 @@ void GimbalTask()
    
     pitch_gyro_measure =  gimbal_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET];
     switch (gimbal_cmd_recv.gimbal_mode) {
-        // ??
+        //停掉 DM pitch 电机，并把 angle/speed 两个 PID 的积分项清零，同时关掉速度前馈，防止重新使能时积分残留
         case GIMBAL_ZERO_FORCE:
             DMMotorStop(pitch_motor);
             pitch_motor->motor_controller.speed_PID.Iout = 0;
             pitch_motor->motor_controller.angle_PID.Iout = 0;
-             pitch_speed_feedforward = 0;
+            pitch_speed_feedforward = 0;
             break;
-        // ?????????????,???????yaw?????offset??????????????????
-        case GIMBAL_GYRO_MODE: // ?????????????
+        case GIMBAL_GYRO_MODE://使能 DM pitch 电机，切换到角度环和速度环都使用 IMU 反馈的模式，开启角度环控制
             DMMotorEnable1(pitch_motor);
-
             // DJIMotorChangeFeed(pitch_motor,SPEED_LOOP, OTHER_FEED);
             // DJIMotorChangeFeed(pitch_motor,ANGLE_LOOP, OTHER_FEED);
             // DJIMotorOuterLoop(pitch_motor, ANGLE_LOOP);
-    
             
-            if (gimbal_cmd_recv.nuc_mode == version_control)
+            if (gimbal_cmd_recv.nuc_mode == version_control)//自瞄模式，pitch 角度参考来自命令，并且使用一个单独的前馈值 pitch_version 来进行前馈补偿，这个前馈值可以是一个拟合函数的输出，也可以是一个滤波后的视觉速度乘以一个增益
             {
                 // DJIMotorSetRef(pitch_motor, gimbal_cmd_recv.pitch_version);
-                pitch_limit(gimbal_cmd_recv.pitch_version);
-                pitch_speed_feedforward = pitch_vel;
+                pitch_limit(gimbal_cmd_recv.pitch_version);//对 pitch 角度参考进行限幅，确保它在安全范围内
+                pitch_speed_feedforward = pitch_vel;//把视觉给出的 pitch 速度直接作为速度前馈，这样可以让 pitch 轴更好地跟踪目标的运动，参数需要根据实际情况调整
             }
             else
             {
                 // DJIMotorSetRef(pitch_motor,pitch_offset + gimbal_cmd_recv.pitch);
-                pitch_limit(gimbal_cmd_recv.pitch);
-                pitch_speed_feedforward = 0;
+                pitch_limit(gimbal_cmd_recv.pitch);//对 pitch 角度参考进行限幅，确保它在安全范围内
+                pitch_speed_feedforward = 0;//如果不是自瞄模式，就不使用视觉前馈，pitch_speed_feedforward 置零
             }
             // DJIMotorSetRef(fpv_pitch_motor,fpv_pitch_test);
             // DJIMotorSetRef(telescope_motor,telescope_test);
            
         
             break;
-        case GIMBAL_MOTOR_MODE:
+        case GIMBAL_MOTOR_MODE://使能 DM pitch 电机，切换到角度环和速度环都使用电机编码器反馈的模式，开启角度环控制，pitch 角度参考直接来自命令
             DJIMotorEnable(pitch_motor);
             // DJIMotorOuterLoop(pitch_motor, ANGLE_LOOP);
             // DJIMotorChangeFeed(pitch_motor,ANGLE_LOOP,MOTOR_FEED);
             // DJIMotorChangeFeed(pitch_motor,SPEED_LOOP,MOTOR_FEED);
        
-            DJIMotorSetRef(pitch_motor, pitch_offset + gimbal_cmd_recv.pitch); 
+            DJIMotorSetRef(pitch_motor, pitch_offset + gimbal_cmd_recv.pitch); //对 pitch 角度参考加上一个固定的偏置，确保它在一个合理的范围内，避免过度转动导致损坏，同时也可以根据实际情况调整这个偏置量
             // DJIMotorSetRef(pitch_motor, pitch_test); 
            
             
@@ -543,18 +535,18 @@ void GimbalTask()
     else if(pitch_current_feedforward<-6500)pitch_current_feedforward=-6500;
         switch (gimbal_cmd_recv.gimbal_mode) {
         
-        // ??
+        //停掉 pitch 电机，并把 angle/speed 两个 PID 的积分项清零，同时关掉速度前馈，防止重新使能时积分残留
         case GIMBAL_ZERO_FORCE:
             DJIMotorStop(pitch_motor);
             break;
-        // ?????????????,???????yaw?????offset??????????????????
-        case GIMBAL_GYRO_MODE: // ?????????????
+        // 视觉模式，pitch 轴使用 IMU 反馈，完全由 PID 控制器根据 IMU 反馈来控制
+        case GIMBAL_GYRO_MODE: //这个模式下 pitch 轴使用 IMU 反馈，完全由 PID 控制器根据 IMU 反馈来控制
             DJIMotorEnable(pitch_motor);
             DJIMotorChangeFeed(pitch_motor,ANGLE_LOOP, OTHER_FEED);
             DJIMotorOuterLoop(pitch_motor, ANGLE_LOOP);
             DJIMotorSetRef(pitch_motor,gimbal_cmd_recv.pitch);
             break;
-        case GIMBAL_MOTOR_MODE:
+        case GIMBAL_MOTOR_MODE://这个模式下 pitch 轴使用电机编码器反馈，完全由电机自己根据编码器反馈来控制
             DJIMotorEnable(pitch_motor);
             DJIMotorChangeFeed(pitch_motor,ANGLE_LOOP, OTHER_FEED);
             DJIMotorOuterLoop(pitch_motor, ANGLE_LOOP);
@@ -564,26 +556,21 @@ void GimbalTask()
             break;
     }
     #endif
-    gimbal_feedback_data.gimbal_imu_data              = gimbal_IMU_data;
-    // gimbal_feedback_data.yaw_motor_single_round_angle = (uint16_t)yaw_motor->measure.angle_single_round; // ???????
+    gimbal_feedback_data.gimbal_imu_data              = gimbal_IMU_data;//把 IMU 数据塞进 gimbal_feedback_data，供别的模块读取
+    // gimbal_feedback_data.yaw_motor_single_round_angle = (uint16_t)yaw_motor->measure.angle_single_round; 
     // gimbal_feedback_data.yaw_ecd                      = yaw_motor->measure.ecd;
     // gimbal_feedback_data.pitch_ecd                    = pitch_motor->measure.ecd;
     // gimbal_feedback_data.yaw_total_angle              = yaw_motor->measure.total_angle;
     // gimbal_feedback_data.pitch_total_angle            = pitch_motor->measure.total_angle;
     
     #endif
-    // ????????????pitch???????????????
-    // ????IMU???/pitch??????????????????????????????
-    // ...
-    
-    // ???閿熸枻鎷???????,?????imu??yaw??ecd
+
     // gimbal_feedback_data.gimbal_imu_data              = gimbal_IMU_data;
-    // gimbal_feedback_data.yaw_motor_single_round_angle = (uint16_t)yaw_motor->measure.angle_single_round; // ???????
+    // gimbal_feedback_data.yaw_motor_single_round_angle = (uint16_t)yaw_motor->measure.angle_single_round; 
     // gimbal_feedback_data.yaw_ecd                      = yaw_motor->measure.ecd;
     // gimbal_feedback_data.pitch_ecd                    = pitch_motor->measure.ecd;
     // gimbal_feedback_data.yaw_total_angle              = yaw_motor->measure.total_angle;
     // gimbal_feedback_data.pitch_total_angle            = pitch_motor->measure.total_angle;
-    // ???????
-    PubPushMessage(gimbal_pub, (void *)&gimbal_feedback_data);
+    PubPushMessage(gimbal_pub, (void *)&gimbal_feedback_data);//把最新的 gimbal_feedback_data 发布到消息中心，供别的模块订阅读取
 }
 
