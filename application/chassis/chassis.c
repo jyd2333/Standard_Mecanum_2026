@@ -12,7 +12,7 @@
  */
 /*------------------------------------------------------------------------------*/
 #include "chassis.h"//拿到本模块对外接口 ChassisInit()、ChassisTask()
-#include "robot_board.h"//根据 CHASSIS_BOARD / ONE_BOARD 决定编译哪部分代码。
+#include "robot_board.h"//根据 CHASSIS_BOARD / ONE_BOARD 决定编译哪部分代码
 #include "robot_params.h"//读底盘几何参数、限位、控制宏定义等
 #include "robot_types.h"//读 Chassis_Ctrl_Cmd_s、chassis_mode_e、leg_mode_e 等类型
 #include "remote_control.h"// 读遥控器数据
@@ -92,7 +92,7 @@ static DJIMotorInstance *motor_lf, *motor_rf, *motor_lb, *motor_rb; // 四个麦
 DMMotorInstance *joint_l, *joint_r;                 //左右关节电机对象
 extern referee_info_t *referee_data_for_ui;         //裁判系统数据，底盘会读电源状态
 uint16_t power_supdata_watch  ;                     //电源数据监视变量，底盘每次接收到裁判系统发来的数据就更新这个变量，底盘定时器每次到达就检查这个变量，如果超过一定时间没更新就认为裁判系统掉线了
-volatile uint8_t superCap_watchdog;                 //超级电容通信看门狗
+extern float motorset[4];
 /*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 // 为了方便调试加入的量
 static uint8_t center_gimbal_offset_x = CENTER_GIMBAL_OFFSET_X; // 云台旋转中心距底盘几何中心的距离,前后方向,云台位于正中心时默认设为0
@@ -828,6 +828,109 @@ float safe_sqrt(float x)
     }
     return __builtin_sqrtf(x);
 }
+
+static void RecoverCan1AfterSuperCapOffline(void)
+{
+    static uint8_t supercap_seen_online = 0;
+    static uint8_t recovery_armed = 0;
+
+    if (supercap == NULL)
+    {
+        return;
+    }
+
+    if (SuperCapIsOnline(supercap))
+    {
+        supercap_seen_online = 1;
+        recovery_armed = 1;
+        return;
+    }
+
+    if (!supercap_seen_online || !recovery_armed)
+    {
+        return;
+    }
+
+    HAL_CAN_Stop(&hcan1);
+    HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO1_MSG_PENDING);
+    HAL_CAN_Start(&hcan1);
+    recovery_armed = 0;
+}
+
+static void UpdateChassisDebugFeedback(void)
+{
+    uint8_t i;
+    float vx_obs = 0.0f;
+    float vy_obs = 0.0f;
+    float wz_obs = 0.0f;
+
+    ObserveMecanumBodySpeed(&vx_obs, &vy_obs, &wz_obs);
+    chassis_feedback_data.real_vx = vx_obs;
+    chassis_feedback_data.real_vy = vy_obs;
+    chassis_feedback_data.real_wz = wz_obs;
+    chassis_feedback_data.capget_power_limit = chassis_cmd_recv.power_limit;
+
+    if (Chassis_IMU_data != NULL)
+    {
+        for (i = 0; i < 3; i++)
+        {
+            chassis_feedback_data.chassis_imu_data[i] = Chassis_IMU_data->output.INS_angle[i];
+        }
+        chassis_feedback_data.chassis_pitch = Chassis_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET];
+    }
+    else
+    {
+        for (i = 0; i < 3; i++)
+        {
+            chassis_feedback_data.chassis_imu_data[i] = 0.0f;
+        }
+        chassis_feedback_data.chassis_pitch = 0.0f;
+    }
+
+    if (motor_lf == NULL || motor_rf == NULL || motor_lb == NULL || motor_rb == NULL)
+    {
+        for (i = 0; i < 4; i++)
+        {
+            chassis_feedback_data.wheel_ref[i] = 0.0f;
+            chassis_feedback_data.wheel_pid_output[i] = 0.0f;
+            chassis_feedback_data.wheel_post_limit_current[i] = 0.0f;
+            chassis_feedback_data.wheel_real_current[i] = 0.0f;
+            chassis_feedback_data.wheel_speed_aps[i] = 0.0f;
+            chassis_feedback_data.wheel_online_flag[i] = 0u;
+        }
+        return;
+    }
+
+    chassis_feedback_data.wheel_ref[LF] = vt_lf;
+    chassis_feedback_data.wheel_ref[RF] = vt_rf;
+    chassis_feedback_data.wheel_ref[RB] = vt_rb;
+    chassis_feedback_data.wheel_ref[LB] = vt_lb;
+
+    chassis_feedback_data.wheel_pid_output[LF] = motor_lf->motor_controller.speed_PID.Output;
+    chassis_feedback_data.wheel_pid_output[RF] = motor_rf->motor_controller.speed_PID.Output;
+    chassis_feedback_data.wheel_pid_output[RB] = motor_rb->motor_controller.speed_PID.Output;
+    chassis_feedback_data.wheel_pid_output[LB] = motor_lb->motor_controller.speed_PID.Output;
+
+    chassis_feedback_data.wheel_post_limit_current[LF] = motorset[LF];
+    chassis_feedback_data.wheel_post_limit_current[RF] = motorset[RF];
+    chassis_feedback_data.wheel_post_limit_current[RB] = motorset[RB];
+    chassis_feedback_data.wheel_post_limit_current[LB] = motorset[LB];
+
+    chassis_feedback_data.wheel_real_current[LF] = motor_lf->measure.real_current;
+    chassis_feedback_data.wheel_real_current[RF] = motor_rf->measure.real_current;
+    chassis_feedback_data.wheel_real_current[RB] = motor_rb->measure.real_current;
+    chassis_feedback_data.wheel_real_current[LB] = motor_lb->measure.real_current;
+
+    chassis_feedback_data.wheel_speed_aps[LF] = motor_lf->measure.speed_aps;
+    chassis_feedback_data.wheel_speed_aps[RF] = motor_rf->measure.speed_aps;
+    chassis_feedback_data.wheel_speed_aps[RB] = motor_rb->measure.speed_aps;
+    chassis_feedback_data.wheel_speed_aps[LB] = motor_lb->measure.speed_aps;
+
+    chassis_feedback_data.wheel_online_flag[LF] = DaemonIsOnline(motor_lf->daemon);
+    chassis_feedback_data.wheel_online_flag[RF] = DaemonIsOnline(motor_rf->daemon);
+    chassis_feedback_data.wheel_online_flag[RB] = DaemonIsOnline(motor_rb->daemon);
+    chassis_feedback_data.wheel_online_flag[LB] = DaemonIsOnline(motor_lb->daemon);
+}
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 
 /*----------------------------------------------------------------------------------- 机器人底盘控制核心任务 -----------------------------------------------------------------------*/
@@ -836,13 +939,7 @@ void ChassisTask()
     // 后续增加没收到消息的处理(双板的情况)
     // 获取新的控制信息
 
-    if(superCap_watchdog==0) {
-        HAL_CAN_Stop(&hcan1);
-        HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING|CAN_IT_RX_FIFO1_MSG_PENDING);
-        HAL_CAN_Start(&hcan1);
-        //先看 superCap_watchdog；如果已经掉到 0，就重启 hcan1 和接收中断，给超级电容通信“自恢复”；否则就把看门狗减 1。
-}
-    else superCap_watchdog--;
+    RecoverCan1AfterSuperCapOffline();
 #if defined(CHASSIS_BOARD) || defined(ONE_BOARD)
     SubGetMessage(chassis_sub, &chassis_cmd_recv);
 
@@ -1149,6 +1246,8 @@ void ChassisTask()
     memcpy(&chassis_feedback_data.cap_voltage, &cap_voltage, sizeof(float));//把电容电压写入反馈数据结构
     memcpy(&chassis_feedback_data.cap_online_flag, &cap_online, sizeof(uint8_t));//把电容在线状态写入反馈数据结构
     memcpy(&chassis_feedback_data.chassis_power_output, &Power_Output, sizeof(float));//把底盘最终功率输出写入反馈数据结构
+    chassis_feedback_data.chassis_voltage = cap_voltage;
+    UpdateChassisDebugFeedback();
    
 #ifdef ONE_BOARD
     PubPushMessage(chassis_pub, (void *)&chassis_feedback_data);

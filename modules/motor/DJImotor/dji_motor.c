@@ -315,7 +315,7 @@ void DJIMotorControl()
             pid_ref = PIDCalculate(&motor_controller->angle_PID, pid_measure, pid_ref);
         }
         
-       if (motor_setting->motor_reverse_flag == MOTOR_DIRECTION_REVERSE)
+        if (motor_setting->motor_reverse_flag == MOTOR_DIRECTION_REVERSE)
             pid_ref *= -1;
 
             
@@ -359,16 +359,16 @@ void DJIMotorControl()
             if (power_data.count > 3) {
                 power_data.count = 0;
             }
-            power_data.input_power[power_data.count]    =PowerInputCalc(motor->measure.speed_rpm, motor->motor_controller.speed_PID.Output);
-            power_data.wheel_speed[power_data.count]    = motor->measure.speed_rpm;
-            power_data.predict_output[power_data.count] = pid_ref;
-            power_data.count++;
-            
-        }
+                power_data.input_power[power_data.count]    =PowerInputCalc(motor->measure.speed_rpm, motor->motor_controller.speed_PID.Output);
+                power_data.wheel_speed[power_data.count]    = motor->measure.speed_rpm;
+                power_data.predict_output[power_data.count] = pid_ref;
+                power_data.count++;
+                
+            }
 #endif
         // 若该电机处于停止状态,直接将buff置零
-        if (motor->stop_flag == MOTOR_STOP)
-            memset(sender_assignment[group].tx_buff + 2 * num, 0, 16u);
+        if (motor->stop_flag == MOTOR_STOP) 
+        memset(sender_assignment[group].tx_buff + 2 * num, 0, 16u);
     }
     
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)

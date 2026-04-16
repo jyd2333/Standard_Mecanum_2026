@@ -192,6 +192,12 @@ typedef struct
     float chassis_voltage;
     float chassis_imu_data[3];
     float chassis_pitch;
+    float wheel_ref[4];
+    float wheel_pid_output[4];
+    float wheel_post_limit_current[4];
+    float wheel_real_current[4];
+    float wheel_speed_aps[4];
+    uint8_t wheel_online_flag[4];
 } Chassis_Upload_Data_s;
 
 typedef struct

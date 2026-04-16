@@ -26,6 +26,7 @@
 typedef struct
 {
     uint8_t Initialized;
+    uint8_t UseFixedDt;
     KalmanFilter_t IMU_QuaternionEKF;
     uint8_t ConvergeFlag;
     uint8_t StableFlag;
@@ -56,6 +57,8 @@ typedef struct
     float R;  // 加速度计量测噪声
 
     float dt; // 姿态更新周期
+    float FixedDt;
+    float InitQuaternion[4];
     mat ChiSquare;
     float ChiSquare_Data[1];      // 卡方检验检测函数
     float ChiSquareTestThreshold; // 卡方检验阈值
@@ -67,9 +70,14 @@ typedef struct
 } QEKF_INS_t;
 
 extern QEKF_INS_t QEKF_INS;
-extern float chiSquare;
-extern float ChiSquareTestThreshold;
+
+/* 可变dt接口: 每次更新都传入实时dt */
 void IMU_QuaternionEKF_Init(float* init_quaternion,float process_noise1, float process_noise2, float measure_noise, float lambda, float lpf);
 void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, float az, float dt);
+
+/* 文章风格接口: Init固定dt, Update不再传dt */
+void IMU_QuaternionEKF_Init_Article(float process_noise1, float process_noise2, float measure_noise, float lambda, float dt, float lpf);
+void IMU_QuaternionEKF_Update_Article(float gx, float gy, float gz, float ax, float ay, float az);
+void IMU_QuaternionEKF_Reset(void);
 
 #endif

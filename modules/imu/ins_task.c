@@ -10,8 +10,8 @@
  */
 
 #include "ins_task.h"
-#include "AHRS.h"
 #include "QuaternionEKF.h"
+#include "general_def.h"
 #include "robot_params.h"
 // 旋转与零漂
 static float gyro_scale_factor[3][3]  = {BMI088_BOARD_INSTALL_SPIN_MATRIX};
@@ -23,12 +23,18 @@ static float accel_fliter_1[3]   = {0.0f, 0.0f, 0.0f};
 static float accel_fliter_2[3]   = {0.0f, 0.0f, 0.0f};
 static float accel_fliter_3[3]   = {0.0f, 0.0f, 0.0f};
 static const float fliter_num[3] = {1.929454039488895f, -0.93178349823448126f, 0.002329458745586203f};
+static uint8_t qekf_initialized   = 0;
+
+/* Quaternion EKF tunings */
+#define QEKF_PROCESS_NOISE1 (10.0f)
+#define QEKF_PROCESS_NOISE2 (0.001f)
+#define QEKF_MEASURE_NOISE  (1000000.0f)
+#define QEKF_LAMBDA         (0.9996f)
+#define QEKF_ACCEL_LPF      (0.0f) // 外部已做acc低通,EKF内部LPF关闭
 
 static INS_Instance *INS       = NULL;
 #include <math.h>
 #include <stdbool.h>
-
-#define beta 0.1f // 这是滤波增益，可以根据实际需要进行调整
 
 /**
  * @brief          旋转陀螺仪,加速度计和磁力计,并计算零漂,因为设备有不同安装方式
@@ -57,7 +63,7 @@ INS_Instance *INS_Init(BMI088Instance *bmi088)
 
     BMI088_Data_t raw_data;
     BMI088Acquire(bmi088, &raw_data);
-    imu_cali_slove(INS->INS_data.INS_gyro, INS->INS_data.INS_accel, INS->INS_data.INS_mag, &raw_data);
+    imu_cali_slove(INSinstance->INS_data.INS_gyro, INSinstance->INS_data.INS_accel, INSinstance->INS_data.INS_mag, &raw_data);
     //  赋值四元数初值
     INSinstance->INS_data.INS_quat[0] = 1;
     INSinstance->INS_data.INS_quat[1] = 0;
@@ -68,13 +74,20 @@ INS_Instance *INS_Init(BMI088Instance *bmi088)
     accel_fliter_1[1] = accel_fliter_2[1] = accel_fliter_3[1] = INSinstance->INS_data.INS_accel[1];
     accel_fliter_1[2] = accel_fliter_2[2] = accel_fliter_3[2] = INSinstance->INS_data.INS_accel[2];
 
+    IMU_QuaternionEKF_Init(INSinstance->INS_data.INS_quat,
+                           QEKF_PROCESS_NOISE1,
+                           QEKF_PROCESS_NOISE2,
+                           QEKF_MEASURE_NOISE,
+                           QEKF_LAMBDA,
+                           QEKF_ACCEL_LPF);
+    qekf_initialized = 1;
+
     INS = INSinstance;
 
 
     return INSinstance;
 }
-// extern float imu_angle[3];
-float deltaYaw;
+
 void INS_Task()
 {
     static BMI088_Data_t raw_data;
@@ -106,52 +119,42 @@ void INS_Task()
     accel_fliter_3[2] = accel_fliter_2[2] * fliter_num[0] + accel_fliter_1[2] * fliter_num[1] + INS->INS_data.INS_accel[2] * fliter_num[2];
 
     INS->timing_time = DWT_GetDeltaT(&INS->BMI088->bias_dwt_cnt);
-    // if(imu_angle[0]==0&&imu_angle[0]==0&&imu_angle[0]==0){
-    AHRS_update(INS->INS_data.INS_quat, INS->timing_time, INS->INS_data.INS_gyro,accel_fliter_3, INS->INS_data.INS_mag);
-    get_angle(INS->INS_data.INS_quat, &INS->output.INS_angle[INS_YAW_ADDRESS_OFFSET], &INS->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], &INS->output.INS_angle[INS_ROLL_ADDRESS_OFFSET]);
-    
-    // //get Yaw total, yaw数据可能会超过360,处理一下方便其他功能使用(如小陀螺)
-    // static float last_yaw_angle    = 0; // 上一次的yaw角度
-    // static int16_t yaw_round_count = 0; // yaw转过的圈数
-    // if (INS->output.INS_angle[2] - last_yaw_angle > PI) {
-    //     yaw_round_count++;
-    // } else if (INS->output.INS_angle[2] - last_yaw_angle < -PI) {
-    //     yaw_round_count--;
-    // }
-    // INS->output.Yaw_total_angle = INS->output.INS_angle[2] + yaw_round_count * 2 * PI;
-    // last_yaw_angle              = INS->output.INS_angle[2];
-
-    // // 弧度转角度
-    // for (uint8_t i = 0; i < 3; i++) {
-    //     INS->output.INS_angle_deg[i] = INS->output.INS_angle[i] * RAD_TO_ANGLE;
-    // }
-    // INS->output.Yaw_total_angle_deg = INS->output.Yaw_total_angle * RAD_TO_ANGLE;
-    // }
-    
-    // else{
-//     static float last_yaw_angle    = 0; // 上一次的yaw角度
-//     static int16_t yaw_round_count = 0; // yaw转过的圈数
-//     // for(int i=0;i<3;i++)INS->output.INS_angle_deg[i]   = imu_angle[i];  
-//     // deltaYaw=imu_angle[2]-last_yaw_angle;
-//     if(deltaYaw>170)yaw_round_count--;
-//     else if(deltaYaw<-170)yaw_round_count++;
-//     INS->output.Yaw_total_angle_deg = INS->output.INS_angle_deg[2] + yaw_round_count * 360;
-//     // last_yaw_angle=imu_angle[2];
-
-// get Yaw total, yaw数据可能会超过360,处理一下方便其他功能使用(如小陀螺)
-    static float last_yaw_angle    = 0; // 上一次的yaw角度
-    static int16_t yaw_round_count = 0; // yaw转过的圈数
-    if (INS->output.INS_angle[INS_YAW_ADDRESS_OFFSET] - last_yaw_angle > PI) {
-        yaw_round_count--;
-    } else if (INS->output.INS_angle[INS_YAW_ADDRESS_OFFSET] - last_yaw_angle < -PI) {
-        yaw_round_count++;
+    if (!qekf_initialized) {
+        IMU_QuaternionEKF_Init(INS->INS_data.INS_quat,
+                               QEKF_PROCESS_NOISE1,
+                               QEKF_PROCESS_NOISE2,
+                               QEKF_MEASURE_NOISE,
+                               QEKF_LAMBDA,
+                               QEKF_ACCEL_LPF);
+        qekf_initialized = 1;
     }
-    INS->output.Yaw_total_angle = INS->output.INS_angle[INS_YAW_ADDRESS_OFFSET] + yaw_round_count * 2 * PI;
-    last_yaw_angle              = INS->output.INS_angle[INS_YAW_ADDRESS_OFFSET];
 
-    // 弧度转角度
+    IMU_QuaternionEKF_Update(INS->INS_data.INS_gyro[0],
+                             INS->INS_data.INS_gyro[1],
+                             INS->INS_data.INS_gyro[2],
+                             accel_fliter_3[0],
+                             accel_fliter_3[1],
+                             accel_fliter_3[2],
+                             INS->timing_time);
+
+    for (uint8_t i = 0; i < 4; i++) {
+        INS->INS_data.INS_quat[i] = QEKF_INS.q[i];
+    }
     for (uint8_t i = 0; i < 3; i++) {
-        INS->output.INS_angle_deg[i] = INS->output.INS_angle[i] * RAD_TO_ANGLE;
+        INS->INS_data.INS_gyro[i] = QEKF_INS.Gyro[i];
+        INS->INS_data.INS_imu_6axis[i] = INS->INS_data.INS_gyro[i];
+        INS->INS_data.INS_imu_6axis[i + 3] = accel_fliter_3[i];
+        INS->BMI088->imu_6axis[i] = INS->INS_data.INS_imu_6axis[i];
+        INS->BMI088->imu_6axis[i + 3] = INS->INS_data.INS_imu_6axis[i + 3];
     }
-    INS->output.Yaw_total_angle_deg = INS->output.Yaw_total_angle * RAD_TO_ANGLE;
+
+    INS->output.INS_angle[INS_YAW_ADDRESS_OFFSET] = QEKF_INS.Yaw * DEGREE_2_RAD;
+    INS->output.INS_angle[INS_PITCH_ADDRESS_OFFSET] = QEKF_INS.Pitch * DEGREE_2_RAD;
+    INS->output.INS_angle[INS_ROLL_ADDRESS_OFFSET] = QEKF_INS.Roll * DEGREE_2_RAD;
+
+    INS->output.INS_angle_deg[INS_YAW_ADDRESS_OFFSET] = QEKF_INS.Yaw;
+    INS->output.INS_angle_deg[INS_PITCH_ADDRESS_OFFSET] = QEKF_INS.Pitch;
+    INS->output.INS_angle_deg[INS_ROLL_ADDRESS_OFFSET] = QEKF_INS.Roll;
+    INS->output.Yaw_total_angle_deg = QEKF_INS.YawTotalAngle;
+    INS->output.Yaw_total_angle = QEKF_INS.YawTotalAngle * DEGREE_2_RAD;
 }

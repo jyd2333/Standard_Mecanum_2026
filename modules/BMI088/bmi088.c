@@ -376,6 +376,8 @@ uint8_t BMI088Acquire(BMI088Instance *bmi088, BMI088_Data_t *data_store)
         for (uint8_t i = 0; i < 3; i++) {
             bmi088->acc[i]  = data_store->acc[i];
             bmi088->gyro[i] = data_store->gyro[i];
+            bmi088->imu_6axis[i] = data_store->gyro[i];
+            bmi088->imu_6axis[i + 3] = data_store->acc[i];
         }
         bmi088->temperature = data_store->temperature;
         return 1;
@@ -389,6 +391,10 @@ uint8_t BMI088Acquire(BMI088Instance *bmi088, BMI088_Data_t *data_store)
         data_store->gyro[1]           = bmi088->gyro[1];
         data_store->gyro[2]           = bmi088->gyro[2];
         data_store->temperature       = bmi088->temperature;
+        for (uint8_t i = 0; i < 3; i++) {
+            bmi088->imu_6axis[i] = bmi088->gyro[i];
+            bmi088->imu_6axis[i + 3] = bmi088->acc[i];
+        }
         bmi088->update_flag.imu_ready = 0;
         return 1;
     }
@@ -414,7 +420,6 @@ uint8_t BMI088Acquire_IT_Status(BMI088Instance *bmi088)
     } else
         return 0;
 }
-float gyro_offset_sum[3]={0,0,0};
 #pragma message ("REMEMBER TO CHANGE CALI PARAMETERS IF YOU CHOOSE NOT TO CALIBRATE ONLINE(parameters in robot_def.h)")
 #define GYRO_CALIBRATE_TIME 5000 // 5s
 /**
@@ -427,16 +432,19 @@ void BMI088CalibrateIMU(BMI088Instance *_bmi088)
 {
     if (_bmi088->cali_mode == BMI088_CALIBRATE_ONLINE_MODE) // 性感bmi088在线标定
     {
-        static uint16_t cali_time_count = 0;
-        
+        uint16_t cali_time_count = 0;
+        float gyro_offset_sum[3] = {0.0f, 0.0f, 0.0f};
+
         while (cali_time_count < GYRO_CALIBRATE_TIME) {
             if (cali_time_count % 500 == 0) {
                 buzzer_one_note(1047, 0.2f);
             }
             BMI088_Data_t bmi088_data = {0};
             BMI088Acquire(_bmi088, &bmi088_data);
-            for(int i=0;i<3;i++){
-            gyro_offset_sum[i]+=_bmi088->gyro[i];
+            for (uint8_t i = 0; i < 3; i++) {
+                gyro_offset_sum[i] += bmi088_data.gyro[i];
+                _bmi088->imu_6axis[i] = bmi088_data.gyro[i];
+                _bmi088->imu_6axis[i + 3] = bmi088_data.acc[i];
             }
             // bmi088_data.gyro[0] += _bmi088->gyro_offset[0];
             // bmi088_data.gyro[1] += _bmi088->gyro_offset[1];
@@ -447,8 +455,9 @@ void BMI088CalibrateIMU(BMI088Instance *_bmi088)
             cali_time_count++;
             DWT_Delay(0.001f);
         }
-        for(int i=0;i<3;i++){
-            _bmi088->gyro_offset[i]=gyro_offset_sum[i]/GYRO_CALIBRATE_TIME;
+        for (uint8_t i = 0; i < 3; i++) {
+            _bmi088->gyro_offset[i] = gyro_offset_sum[i] / GYRO_CALIBRATE_TIME;
+            _bmi088->imu_6axis[i] -= _bmi088->gyro_offset[i];
         }
     }
     // 导入数据
@@ -456,6 +465,14 @@ void BMI088CalibrateIMU(BMI088Instance *_bmi088)
         _bmi088->gyro_offset[0] = BMI088_PRE_CALI_GYRO_X_OFFSET;
         _bmi088->gyro_offset[1] = BMI088_PRE_CALI_GYRO_Y_OFFSET;
         _bmi088->gyro_offset[2] = BMI088_PRE_CALI_GYRO_Z_OFFSET;
+        {
+            BMI088_Data_t bmi088_data = {0};
+            BMI088Acquire(_bmi088, &bmi088_data);
+            for (uint8_t i = 0; i < 3; i++) {
+                _bmi088->imu_6axis[i] = bmi088_data.gyro[i] - _bmi088->gyro_offset[i];
+                _bmi088->imu_6axis[i + 3] = bmi088_data.acc[i];
+            }
+        }
     }
 }
 

@@ -79,7 +79,7 @@ HostInstance *rs485_master_instance; // 接口
 HostInstance *rs485_slaver_instance; // 接口
 // 这里的四元数以wxyz的顺序
 static uint8_t vision_recv_data[9];  // 从视觉上位机接收的数据-绝对角度，第9个字节作为识别到目标的标志位
-#define NUC_SEND_SIZE 47u
+#define NUC_SEND_SIZE 43u
 uint8_t vision_send_data[NUC_SEND_SIZE]; // 给视觉上位机发送的数据
 uint8_t chasssis_ctrl_data[UNICOMM_CTRL_FRAME_LEN];
 uint8_t chasssis_update_data[UNICOMM_UPLOAD_FRAME_LEN];
@@ -874,9 +874,6 @@ static void RemoteControlSet()
      gimbal_cmd_send.pitch = pitch_control;    
 }
 
-ramp_t fb_ramp;
-ramp_t lr_ramp;
-
 /**
  * @brief 键盘设定速度
  *
@@ -888,17 +885,8 @@ static void ChassisSet()
     // chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
     // chassis_cmd_send.power_limit=100;//临时更改
 
-    // 底盘平移：使用“目标速度变化触发斜坡重置”的方式，避免按下/松开/反向时突变
-    static float current_speed_x = 0.0f;
-    static float current_speed_y = 0.0f;
-    static float target_speed_x_last = 0.0f;
-    static float target_speed_y_last = 0.0f;
-    static float start_speed_x = 0.0f;
-    static float start_speed_y = 0.0f;
     float target_speed_x = 0.0f;
     float target_speed_y = 0.0f;
-    // 仅在键盘小陀螺模式下降低平移输入权重，减少平移对旋转的拖慢
-    const float keyboard_rotate_translate_scale = 0.2f;
 
     // 前后方向目标
     if (rc_data[TEMP].key[KEY_PRESS].w) {
@@ -906,9 +894,9 @@ static void ChassisSet()
     } else if (rc_data[TEMP].key[KEY_PRESS].s) {
         target_speed_x = -CHASSIS_SPEED;
     } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].w) {
-        target_speed_x = 600.0f;
+        target_speed_x = 1000.0f;
     } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].s) {
-        target_speed_x = -600.0f;
+        target_speed_x = -1000.0f;
     }
 
     // 左右方向目标
@@ -917,33 +905,13 @@ static void ChassisSet()
     } else if (rc_data[TEMP].key[KEY_PRESS].d) {
         target_speed_y = -CHASSIS_SPEED;
     } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].a) {
-        target_speed_y = 30.0f;
+        target_speed_y = 1000.0f;
     } else if (rc_data[TEMP].key[KEY_PRESS_WITH_CTRL].d) {
-        target_speed_y = -30.0f;
+        target_speed_y = -1000.0f;
     }
 
-    // 与 KeyGetMode 的 C 键切换规则保持一致：奇数次按下为小陀螺模式
-    if ((rc_data[TEMP].key_count[KEY_PRESS][Key_C] % 2u) == 1u) {
-        target_speed_x *= keyboard_rotate_translate_scale;
-        target_speed_y *= keyboard_rotate_translate_scale;
-    }
-
-    if (target_speed_x != target_speed_x_last) {
-        target_speed_x_last = target_speed_x;
-        start_speed_x = current_speed_x;
-        ramp_init(&fb_ramp, RAMP_TIME);
-    }
-    if (target_speed_y != target_speed_y_last) {
-        target_speed_y_last = target_speed_y;
-        start_speed_y = current_speed_y;
-        ramp_init(&lr_ramp, RAMP_TIME);
-    }
-
-    chassis_cmd_send.vx = start_speed_x + (target_speed_x - start_speed_x) * ramp_calc(&fb_ramp);
-    chassis_cmd_send.vy = start_speed_y + (target_speed_y - start_speed_y) * ramp_calc(&lr_ramp);
-
-    current_speed_x = chassis_cmd_send.vx;
-    current_speed_y = chassis_cmd_send.vy;
+    chassis_cmd_send.vx = target_speed_x;
+    chassis_cmd_send.vy = target_speed_y;
 }
 float yaw_kx=500,pitch_ky=1000;
 /**
@@ -1374,31 +1342,39 @@ static void RobotCMDTaskChassisBoard(void)
     chassis_fetch_data_uart.color = referee_data->referee_id.Robot_Color;
     chassis_fetch_data_uart.yaw_angle_pidout = gimbal_fetch_data.yaw_angle_pidout;
 
-    gimbal_cmd_send.yaw = chassis_rs485_recv.yaw_control;
-    gimbal_cmd_send.gimbal_mode = chassis_rs485_recv.gimbal_mode;
-    gimbal_cmd_send.nuc_mode = chassis_rs485_recv.nuc_mode;
-    gimbal_cmd_send.yaw_version = chassis_rs485_recv.nuc_yaw;
+    {
+        uint8_t local_mouse_key_mode =
+            (uint8_t)(switch_is_up(rc_data[TEMP].rc.switch_left) && switch_is_down(rc_data[TEMP].rc.switch_right));
 
-    shoot_cmd_send.load_mode = chassis_rs485_recv.load_mode;
-    shoot_cmd_send.shoot_mode = chassis_rs485_recv.shoot_mode;
-    shoot_cmd_send.shoot_count = chassis_rs485_recv.shoot_count;
-    shoot_cmd_send.friction_mode = chassis_rs485_recv.friction_mode;
+        if (!local_mouse_key_mode)
+        {
+            gimbal_cmd_send.yaw = chassis_rs485_recv.yaw_control;
+            gimbal_cmd_send.gimbal_mode = chassis_rs485_recv.gimbal_mode;
+            gimbal_cmd_send.nuc_mode = chassis_rs485_recv.nuc_mode;
+            gimbal_cmd_send.yaw_version = chassis_rs485_recv.nuc_yaw;
+
+            shoot_cmd_send.load_mode = chassis_rs485_recv.load_mode;
+            shoot_cmd_send.shoot_mode = chassis_rs485_recv.shoot_mode;
+            shoot_cmd_send.shoot_count = chassis_rs485_recv.shoot_count;
+            shoot_cmd_send.friction_mode = chassis_rs485_recv.friction_mode;
+
+            chassis_cmd_send.vx = chassis_rs485_recv.vx;
+            chassis_cmd_send.vy = chassis_rs485_recv.vy;
+            chassis_cmd_send.wz = chassis_rs485_recv.wz;
+            chassis_cmd_send.chassis_mode = chassis_rs485_recv.chassis_mode;
+            chassis_cmd_send.offset_angle = chassis_rs485_recv.offset_angle;
+            chassis_cmd_send.gimbal_error_angle = chassis_rs485_recv.gimbal_error_angle;
+            chassis_cmd_send.SuperCap_flag_from_user = chassis_rs485_recv.superCap_flag;
+            chassis_cmd_send.mecanum_force_enable = (chassis_rs485_recv.UI_SendFlag & MECANUM_FORCE_UI_FLAG_BIT) ? 1u : 0u;
+        }
+    }
     RobotCMDUpdateShootReferee(referee_data->GameRobotState.shooter_id1_42mm_cooling_rate,
                                referee_data->PowerHeatData.shooter_42mm_heat,
                                referee_data->GameRobotState.shooter_id1_42mm_cooling_limit);
-
-    chassis_cmd_send.vx = chassis_rs485_recv.vx;
-    chassis_cmd_send.vy = chassis_rs485_recv.vy;
-    chassis_cmd_send.wz = chassis_rs485_recv.wz;
-    chassis_cmd_send.chassis_mode = chassis_rs485_recv.chassis_mode;
-    chassis_cmd_send.offset_angle = chassis_rs485_recv.offset_angle;
-    chassis_cmd_send.gimbal_error_angle = chassis_rs485_recv.gimbal_error_angle;
     chassis_cmd_send.power_limit = referee_data->GameRobotState.chassis_power_limit;
     g_power_set = chassis_cmd_send.power_limit;
     chassis_cmd_send.level = referee_data->GameRobotState.robot_level;
     chassis_cmd_send.power_buffer = referee_data->PowerHeatData.chassis_power_buffer;
-    chassis_cmd_send.SuperCap_flag_from_user = chassis_rs485_recv.superCap_flag;
-    chassis_cmd_send.mecanum_force_enable = (chassis_rs485_recv.UI_SendFlag & MECANUM_FORCE_UI_FLAG_BIT) ? 1u : 0u;
 
     uint32_t rs485_offline_ms = rs485_link_online_once ? (now_ms - rs485_last_rx_ms) : 0u;
     if (rs485_link_online_once && (rs485_offline_ms > RS485_CTRL_LINK_WARN_TIMEOUT_MS)) {
@@ -1508,10 +1484,9 @@ static void RobotCMDTaskGimbalBoard(void)
     memcpy(vision_send_data + 23, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[1], 8);
     float_to_uint8_manual(gimbal_fetch_data.gimbal_imu_data->output.INS_angle[0], vision_send_data + 27);
     memcpy(vision_send_data + 31, &gimbal_fetch_data.gimbal_imu_data->INS_data.INS_gyro[0], 4);
-    float_to_uint8_manual(chassis_fetch_data_uart.yaw_motor_real_current, vision_send_data + 35);
-    memcpy(&vision_send_data[39], &chassis_fetch_data_uart.initial_speed, 4);
-    vision_send_data[43] = 0x0D;
-    vision_send_data[44] = 0x00;
+    memcpy(&vision_send_data[35], &chassis_fetch_data_uart.initial_speed, 4);
+    vision_send_data[39] = 0x0D;
+    vision_send_data[40] = 0x00;
     Append_CRC16_Check_Sum(vision_send_data, NUC_SEND_SIZE);
     HostSend(host_instance, vision_send_data, NUC_SEND_SIZE);
 }

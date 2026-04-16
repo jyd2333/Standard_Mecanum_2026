@@ -24,12 +24,13 @@ const float IMU_QuaternionEKF_F[36] = {1, 0, 0, 0, 0, 0,
                                        0, 0, 0, 1, 0, 0,
                                        0, 0, 0, 0, 1, 0,
                                        0, 0, 0, 0, 0, 1};
-float IMU_QuaternionEKF_P[36] = {100000, 0.1, 0.1, 0.1, 0.1, 0.1,
-                                 0.1, 100000, 0.1, 0.1, 0.1, 0.1,
-                                 0.1, 0.1, 100000, 0.1, 0.1, 0.1,
-                                 0.1, 0.1, 0.1, 100000, 0.1, 0.1,
-                                 0.1, 0.1, 0.1, 0.1, 100, 0.1,
-                                 0.1, 0.1, 0.1, 0.1, 0.1, 100};
+const float IMU_QuaternionEKF_P_Const[36] = {100000, 0.1, 0.1, 0.1, 0.1, 0.1,
+                                             0.1, 100000, 0.1, 0.1, 0.1, 0.1,
+                                             0.1, 0.1, 100000, 0.1, 0.1, 0.1,
+                                             0.1, 0.1, 0.1, 100000, 0.1, 0.1,
+                                             0.1, 0.1, 0.1, 0.1, 100, 0.1,
+                                             0.1, 0.1, 0.1, 0.1, 0.1, 100};
+float IMU_QuaternionEKF_P[36];
 float IMU_QuaternionEKF_K[18];
 float IMU_QuaternionEKF_H[18];
 
@@ -38,9 +39,12 @@ static void IMU_QuaternionEKF_Observe(KalmanFilter_t *kf);
 static void IMU_QuaternionEKF_F_Linearization_P_Fading(KalmanFilter_t *kf);
 static void IMU_QuaternionEKF_SetH(KalmanFilter_t *kf);
 static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf);
+static void IMU_QuaternionEKF_SetInitQuaternion(const float *init_quaternion);
+static void IMU_QuaternionEKF_FilterInitIfNeeded(void);
 
 /**
  * @brief Quaternion EKF initialization and some reference value
+ * @note  可变dt接口: 每次调用Update时传入实时dt
  * @param[in] process_noise1 quaternion process noise    10
  * @param[in] process_noise2 gyro bias process noise     0.001
  * @param[in] measure_noise  accel measure noise         1000000
@@ -50,42 +54,94 @@ static void IMU_QuaternionEKF_xhatUpdate(KalmanFilter_t *kf);
 void IMU_QuaternionEKF_Init(float* init_quaternion,float process_noise1, float process_noise2, float measure_noise, float lambda, float lpf)
 {
     QEKF_INS.Initialized = 1;
+    QEKF_INS.UseFixedDt = 0;
+    QEKF_INS.FixedDt = 0;
     QEKF_INS.Q1 = process_noise1;
     QEKF_INS.Q2 = process_noise2;
     QEKF_INS.R = measure_noise;
     QEKF_INS.ChiSquareTestThreshold = 1e-8;
-    QEKF_INS.ConvergeFlag = 0;
-    QEKF_INS.ErrorCount = 0;
-    QEKF_INS.UpdateCount = 0;
     if (lambda > 1)
     {
         lambda = 1;
     }
+    else if (lambda < 0)
+    {
+        lambda = 0;
+    }
     QEKF_INS.lambda = lambda;
     QEKF_INS.accLPFcoef = lpf;
 
-    // 初始化矩阵维度信息
-    Kalman_Filter_Init(&QEKF_INS.IMU_QuaternionEKF, 6, 0, 3);
-    Matrix_Init(&QEKF_INS.ChiSquare, 1, 1, (float *)QEKF_INS.ChiSquare_Data);
+    IMU_QuaternionEKF_SetInitQuaternion(init_quaternion);
+    IMU_QuaternionEKF_FilterInitIfNeeded();
+    IMU_QuaternionEKF_Reset();
+}
 
-    // 姿态初始化
-    for(int i = 0; i < 4; i++)
+/**
+ * @brief Quaternion EKF initialization with fixed dt (article style)
+ * @note  固定dt接口: 在Init中给定dt,后续Update不再传dt
+ */
+void IMU_QuaternionEKF_Init_Article(float process_noise1, float process_noise2, float measure_noise, float lambda, float dt, float lpf)
+{
+    static float default_quaternion[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+
+    IMU_QuaternionEKF_Init(default_quaternion, process_noise1, process_noise2, measure_noise, lambda, lpf);
+    QEKF_INS.UseFixedDt = 1;
+    QEKF_INS.FixedDt = dt > 0 ? dt : 1e-3f;
+}
+
+void IMU_QuaternionEKF_Reset(void)
+{
+    KalmanFilter_t *kf = &QEKF_INS.IMU_QuaternionEKF;
+    if (!QEKF_INS.Initialized || kf->xhat_data == NULL)
     {
-        QEKF_INS.IMU_QuaternionEKF.xhat_data[i] = init_quaternion[i];
+        return;
     }
 
-    // 自定义函数初始化,用于扩展或增加kf的基础功能
-    QEKF_INS.IMU_QuaternionEKF.User_Func0_f = IMU_QuaternionEKF_Observe;
-    QEKF_INS.IMU_QuaternionEKF.User_Func1_f = IMU_QuaternionEKF_F_Linearization_P_Fading;
-    QEKF_INS.IMU_QuaternionEKF.User_Func2_f = IMU_QuaternionEKF_SetH;
-    QEKF_INS.IMU_QuaternionEKF.User_Func3_f = IMU_QuaternionEKF_xhatUpdate;
+    QEKF_INS.ConvergeFlag = 0;
+    QEKF_INS.StableFlag = 0;
+    QEKF_INS.ErrorCount = 0;
+    QEKF_INS.UpdateCount = 0;
+    QEKF_INS.gyro_norm = 0;
+    QEKF_INS.accl_norm = 0;
+    QEKF_INS.AdaptiveGainScale = 1.0f;
+    QEKF_INS.Roll = 0;
+    QEKF_INS.Pitch = 0;
+    QEKF_INS.Yaw = 0;
+    QEKF_INS.YawTotalAngle = 0;
+    QEKF_INS.YawRoundCount = 0;
+    QEKF_INS.YawAngleLast = 0;
+    QEKF_INS.ChiSquare_Data[0] = 0;
 
-    // 设定标志位,用自定函数替换kf标准步骤中的SetK(计算增益)以及xhatupdate(后验估计/融合)
-    QEKF_INS.IMU_QuaternionEKF.SkipEq3 = TRUE;
-    QEKF_INS.IMU_QuaternionEKF.SkipEq4 = TRUE;
+    memset(QEKF_INS.GyroBias, 0, sizeof(QEKF_INS.GyroBias));
+    memset(QEKF_INS.Gyro, 0, sizeof(QEKF_INS.Gyro));
+    memset(QEKF_INS.Accel, 0, sizeof(QEKF_INS.Accel));
+    memset(QEKF_INS.OrientationCosine, 0, sizeof(QEKF_INS.OrientationCosine));
 
-    memcpy(QEKF_INS.IMU_QuaternionEKF.F_data, IMU_QuaternionEKF_F, sizeof(IMU_QuaternionEKF_F));
-    memcpy(QEKF_INS.IMU_QuaternionEKF.P_data, IMU_QuaternionEKF_P, sizeof(IMU_QuaternionEKF_P));
+    memset(kf->xhat_data, 0, sizeof(float) * kf->xhatSize);
+    memset(kf->xhatminus_data, 0, sizeof(float) * kf->xhatSize);
+    memset(kf->z_data, 0, sizeof(float) * kf->zSize);
+    memset(kf->MeasuredVector, 0, sizeof(float) * kf->zSize);
+    memset(kf->FilteredValue, 0, sizeof(float) * kf->xhatSize);
+    memset(kf->K_data, 0, sizeof(float) * kf->xhatSize * kf->zSize);
+    memset(kf->H_data, 0, sizeof(float) * kf->zSize * kf->xhatSize);
+    memset(kf->Q_data, 0, sizeof(float) * kf->xhatSize * kf->xhatSize);
+    memset(kf->R_data, 0, sizeof(float) * kf->zSize * kf->zSize);
+    memset(IMU_QuaternionEKF_K, 0, sizeof(IMU_QuaternionEKF_K));
+    memset(IMU_QuaternionEKF_H, 0, sizeof(IMU_QuaternionEKF_H));
+
+    for (uint8_t i = 0; i < 4; ++i)
+    {
+        kf->xhat_data[i] = QEKF_INS.InitQuaternion[i];
+        kf->xhatminus_data[i] = QEKF_INS.InitQuaternion[i];
+        kf->FilteredValue[i] = QEKF_INS.InitQuaternion[i];
+        QEKF_INS.q[i] = QEKF_INS.InitQuaternion[i];
+    }
+
+    kf->SkipEq5 = FALSE;
+    memcpy(kf->F_data, IMU_QuaternionEKF_F, sizeof(IMU_QuaternionEKF_F));
+    memcpy(kf->P_data, IMU_QuaternionEKF_P_Const, sizeof(IMU_QuaternionEKF_P_Const));
+    memcpy(kf->Pminus_data, IMU_QuaternionEKF_P_Const, sizeof(IMU_QuaternionEKF_P_Const));
+    memcpy(IMU_QuaternionEKF_P, IMU_QuaternionEKF_P_Const, sizeof(IMU_QuaternionEKF_P_Const));
 }
 
 /**
@@ -99,6 +155,11 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
     // 0.5(Ohm-Ohm^bias)*deltaT,用于更新工作点处的状态转移F矩阵
     static float halfgxdt, halfgydt, halfgzdt;
     static float accelInvNorm;
+
+    if (!QEKF_INS.Initialized || dt <= 0)
+    {
+        return;
+    }
 
     /*   F, number with * represent vals to be set
      0      1*     2*     3*     4     5
@@ -214,6 +275,19 @@ void IMU_QuaternionEKF_Update(float gx, float gy, float gz, float ax, float ay, 
     QEKF_INS.YawTotalAngle = 360.0f * QEKF_INS.YawRoundCount + QEKF_INS.Yaw;
     QEKF_INS.YawAngleLast = QEKF_INS.Yaw;
     QEKF_INS.UpdateCount++; // 初始化低通滤波用,计数测试用
+}
+
+/**
+ * @brief Quaternion EKF update with fixed dt (article style)
+ */
+void IMU_QuaternionEKF_Update_Article(float gx, float gy, float gz, float ax, float ay, float az)
+{
+    if (!QEKF_INS.UseFixedDt || QEKF_INS.FixedDt <= 0)
+    {
+        return;
+    }
+
+    IMU_QuaternionEKF_Update(gx, gy, gz, ax, ay, az, QEKF_INS.FixedDt);
 }
 
 /**
@@ -471,6 +545,57 @@ static void IMU_QuaternionEKF_Observe(KalmanFilter_t *kf)
     memcpy(IMU_QuaternionEKF_H, kf->H_data, sizeof(IMU_QuaternionEKF_H));
 }
 
+static void IMU_QuaternionEKF_SetInitQuaternion(const float *init_quaternion)
+{
+    float norm_sq;
+    const float default_quaternion[4] = {1.0f, 0.0f, 0.0f, 0.0f};
+    const float *source = init_quaternion != NULL ? init_quaternion : default_quaternion;
+
+    for (uint8_t i = 0; i < 4; ++i)
+    {
+        QEKF_INS.InitQuaternion[i] = source[i];
+    }
+
+    norm_sq = QEKF_INS.InitQuaternion[0] * QEKF_INS.InitQuaternion[0] +
+              QEKF_INS.InitQuaternion[1] * QEKF_INS.InitQuaternion[1] +
+              QEKF_INS.InitQuaternion[2] * QEKF_INS.InitQuaternion[2] +
+              QEKF_INS.InitQuaternion[3] * QEKF_INS.InitQuaternion[3];
+    if (norm_sq > 1e-6f)
+    {
+        float inv_norm = invSqrt(norm_sq);
+        for (uint8_t i = 0; i < 4; ++i)
+        {
+            QEKF_INS.InitQuaternion[i] *= inv_norm;
+        }
+    }
+    else
+    {
+        QEKF_INS.InitQuaternion[0] = 1.0f;
+        QEKF_INS.InitQuaternion[1] = 0.0f;
+        QEKF_INS.InitQuaternion[2] = 0.0f;
+        QEKF_INS.InitQuaternion[3] = 0.0f;
+    }
+}
+
+static void IMU_QuaternionEKF_FilterInitIfNeeded(void)
+{
+    KalmanFilter_t *kf = &QEKF_INS.IMU_QuaternionEKF;
+    if (kf->xhat_data == NULL)
+    {
+        Kalman_Filter_Init(kf, 6, 0, 3);
+    }
+
+    Matrix_Init(&QEKF_INS.ChiSquare, 1, 1, (float *)QEKF_INS.ChiSquare_Data);
+    kf->User_Func0_f = IMU_QuaternionEKF_Observe;
+    kf->User_Func1_f = IMU_QuaternionEKF_F_Linearization_P_Fading;
+    kf->User_Func2_f = IMU_QuaternionEKF_SetH;
+    kf->User_Func3_f = IMU_QuaternionEKF_xhatUpdate;
+
+    // 用自定义函数替换KF标准步骤中的SetK和xhatupdate
+    kf->SkipEq3 = TRUE;
+    kf->SkipEq4 = TRUE;
+}
+
 /**
  * @brief 自定义1/sqrt(x),速度更快
  *
@@ -492,4 +617,3 @@ static float invSqrt(float x)
     y = y * (1.5f - (halfx * y * y));
     return y;
 }
-

@@ -53,6 +53,7 @@ typedef struct
     // IMU数据
     float gyro[3];     // 陀螺仪数据,xyz
     float acc[3];      // 加速度计数据,xyz
+    float imu_6axis[6]; // 6轴数据: [0..2] gyro(rad/s), [3..5] acc(m/s^2)
     float temperature; // 温度
     // 标定数据
     float gyro_offset[3]; // 陀螺仪零偏
