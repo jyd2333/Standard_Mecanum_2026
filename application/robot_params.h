@@ -10,8 +10,8 @@
 /* Gimbal/chassis install & limits */
 #define PITCH_POS_MAX_ECD         4650
 #define PITCH_POS_MIN_ECD         5700
-#define YAW_CHASSIS_ALIGN_ECD     7238
-#define YAW_ECD_GREATER_THAN_4096 1
+#define YAW_CHASSIS_ALIGN_ECD     2367
+#define YAW_ECD_GREATER_THAN_4096 0
 #define PITCH_HORIZON_ECD         5225
 #define PITCH_POS_UP_LIMIT_ECD    6191
 #define PITCH_POS_DOWN_LIMIT_ECD  4830

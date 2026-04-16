@@ -284,6 +284,7 @@ float pitch_angle_out,pitch_speed_out,pitch_angle_measure,pitch_speed_measure;
 int IfCANTransmit;
 uint8_t group, num,ys; // 电机组号和组内编号
 float motorset[4];float pid_measure, pid_ref;             // 电机PID测量值和设定值
+float motorset_test[4];
 
 // 为所有电机实例计算三环PID,发送控制报文
 void DJIMotorControl()
@@ -358,7 +359,7 @@ void DJIMotorControl()
         if (group == 1) {
             if (power_data.count > 3) {
                 power_data.count = 0;
-            }
+            }                
                 power_data.input_power[power_data.count]    =PowerInputCalc(motor->measure.speed_rpm, motor->motor_controller.speed_PID.Output);
                 power_data.wheel_speed[power_data.count]    = motor->measure.speed_rpm;
                 power_data.predict_output[power_data.count] = pid_ref;
@@ -368,7 +369,7 @@ void DJIMotorControl()
 #endif
         // 若该电机处于停止状态,直接将buff置零
         if (motor->stop_flag == MOTOR_STOP) 
-        memset(sender_assignment[group].tx_buff + 2 * num, 0, 16u);
+            memset(sender_assignment[group].tx_buff + 2 * num, 0, 16u);   
     }
     
 #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
@@ -377,12 +378,27 @@ int index = 0;
         power_data.total_power = TotalPowerCalc(power_data.input_power);
         for (int i = 0; i < 4; i++) {
             set                                     = CurrentOutputCalc(power_data.input_power[i], power_data.wheel_speed[i], power_data.predict_output[i]);
+            motorset_test[i] = set;  // ← motorset[0-3] 就是返回值
             sender_assignment[1].tx_buff[2 * i]     = (uint8_t)(set >> 8);     // 低八位
             sender_assignment[1].tx_buff[2 * i + 1] = (uint8_t)(set & 0x00ff); // 高八位
             motorset[i]                             = set;
         }
     }
 #endif
+
+// #if defined(ONE_BOARD) || defined(CHASSIS_BOARD)
+//     if (power_data.count == 4) {  // ✓ 改为检查是否收集了4个电机的数据
+//         power_data.total_power = TotalPowerCalc(power_data.input_power);
+//         for (int i = 0; i < 4; i++) {
+//             set = CurrentOutputCalc(power_data.input_power[i], 
+//                                    power_data.wheel_speed[i], 
+//                                    power_data.predict_output[i]);
+//             sender_assignment[1].tx_buff[2 * i]     = (uint8_t)(set >> 8);
+//             sender_assignment[1].tx_buff[2 * i + 1] = (uint8_t)(set & 0x00ff);
+//             motorset[i] = set;
+//         }
+//     }
+// #endif
 
 #if defined(CHASSIS_BOARD)
        

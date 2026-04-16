@@ -60,43 +60,48 @@ float give_power;
 float power_scale;
 float torque_output;
 float temp;
+
+static float ClampMotorCurrent(float motor_current)
+{
+    if (motor_current > 15000.0f) {
+        return 15000.0f;
+    }
+    if (motor_current < -15000.0f) {
+        return -15000.0f;
+    }
+    return motor_current;
+}
+
 float CurrentOutputCalc(float motor_power, float motor_speed, float motor_current)
 {
     if (total_power > max_power) {
         power_scale = max_power / total_power;
         give_power  = motor_power * power_scale;
         if (motor_power < 0) {
-            if (motor_current > 15000) {
-                motor_current = 15000;
-            }
-            if (motor_current < -15000) {
-                motor_current = -15000;
-            }
-            return motor_current;
+            return ClampMotorCurrent(motor_current);
         }
         float a = k2;
         float b = motor_speed * torque_coefficient;
         float c = k1 * motor_speed * motor_speed - give_power + constant;
-        if (motor_current > 0) {
-             temp           = (-b + sqrtf(b * b - 4 * a * c)) / (2 * a);
-            motor_current_output = temp;
-        } else {
-             temp           = (-b - sqrtf(b * b - 4 * a * c)) / (2 * a);
-            motor_current_output = temp;
+        float discriminant = b * b - 4.0f * a * c;
+        if (discriminant < 0.0f) {
+            // Requested power is below the minimum feasible value at this speed.
+            temp = 0.0f;
+            motor_current_output = 0.0f;
+            return motor_current_output;
         }
+        if (motor_current > 0) {
+            temp = (-b + sqrtf(discriminant)) / (2.0f * a);
+        } else {
+            temp = (-b - sqrtf(discriminant)) / (2.0f * a);
+        }
+        if (temp != temp) {
+            temp = 0.0f;
+        }
+        motor_current_output = ClampMotorCurrent(temp);
         // motor_current = torque_output / 0.3f * (13 / 1) * (16384 / 20);
         // motor_current_output = motor_current;
-        if (motor_current_output > 15000) {
-            motor_current_output = 15000;
-        } else if (motor_current_output < -15000) {
-            motor_current_output = -15000;
-        }
         return motor_current_output;
     }
-    if (motor_current > 15000) {
-        motor_current = 15000;
-    } else if (motor_current < -15000) {
-        motor_current = -15000;
-    }
-    return motor_current;
+    return ClampMotorCurrent(motor_current);
 }
