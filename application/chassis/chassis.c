@@ -663,9 +663,9 @@ const float cap_voltage_loop_kp = 20.0f;// 电容电压环比例系数
     float buffer_energy_target, buffer_energy_actual, cap_voltage_target, cap_voltage_actual;
 
     Power_Output = chassis_cmd_recv.power_limit;
+    buffer_energy_actual = chassis_cmd_recv.power_buffer;
 
     //缓冲能量环
-    buffer_energy_actual = chassis_cmd_recv.power_buffer;
     buffer_energy_target = 50.0f;
     buffer_power_rectification = (buffer_energy_actual - buffer_energy_target) * buffer_energy_loop_kp;
     Power_Output += buffer_power_rectification;
@@ -674,15 +674,23 @@ const float cap_voltage_loop_kp = 20.0f;// 电容电压环比例系数
     if (SuperCapIsOnline(supercap))
     {
         cap_voltage_actual = SuperCapGetChassisVoltage(supercap);
-        if (chassis_cmd_recv.SuperCap_flag_from_user == SUPERCAP_USE)
-            cap_voltage_target = 15.0f;
-        else cap_voltage_target = 23.0f;
-        cap_power_rectification = (cap_voltage_actual - cap_voltage_target) * cap_voltage_loop_kp;
-        if (cap_power_rectification > 50.0f) cap_power_rectification = 70.0f;
-        Power_Output += cap_power_rectification;
+        // Ignore invalid voltage samples to avoid pulling power limit to a large negative value.
+        if (cap_voltage_actual > 5.0f && cap_voltage_actual < 35.0f) {
+            if (chassis_cmd_recv.SuperCap_flag_from_user == SUPERCAP_USE)
+                cap_voltage_target = 15.0f;
+            else
+                cap_voltage_target = 23.0f;
+            cap_power_rectification = (cap_voltage_actual - cap_voltage_target) * cap_voltage_loop_kp;
+            if (cap_power_rectification > 50.0f) cap_power_rectification = 70.0f;
+            if (cap_power_rectification < -50.0f) cap_power_rectification = -50.0f;
+            Power_Output += cap_power_rectification;
+        }
     }
     
     Power_Output -= 10.0f; //静态功耗
+    if (Power_Output < 0.0f) {
+        Power_Output = 0.0f;
+    }
 
     PowerControlupdate(Power_Output, 1.0f / REDUCTION_RATIO_WHEEL);
 
@@ -697,96 +705,96 @@ const float cap_voltage_loop_kp = 20.0f;// 电容电压环比例系数
 
 // 获取功率裆位
 
-//  static void Power_get()
-//  {
-//      //cap->cap_msg_g.power_limit = chassis_cmd_recv.power_limit - 30 + 30 * (cap->cap_msg_s.CapVot - 17.0f) / 6.0f;
-//  }
+ static void Power_get()
+ {
+     //cap->cap_msg_g.power_limit = chassis_cmd_recv.power_limit - 30 + 30 * (cap->cap_msg_s.CapVot - 17.0f) / 6.0f;
+ }
 
-// extern Power_Data_s power_data; // 电机功率数据;
-// extern float power_value;// 当前功率值
-// uint64_t can_send_count=0;// 发送计数器
-// float offset_angle_watch;
-// float text_vx=0;
-// static float freequence = 0,freequence_last=0; 
-// extern float half_to_float(uint16_t half);
-// extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
-//  float follow_kp,follow_kd;
-// float super_speed=10000;
-// float textkd=6,text_speed=10000;
-// static float getRotato_K(uint8_t level){
-//     switch(level){
-//         case 1:
-//             return textkd;
-//             break;
-//         case 2:
-//             return 75;
-//             break;
-//             case 3:
-//             return 80;
-//             break;
-//             case 4:
-//             return 85;
-//             break;
-//             case 5:
-//             return 90;
-//             break;
-//             case 6:
-//             return 95;
-//             break;
-//             case 7:
-//             return 100;
-//             break;
-//             case 8:
-//             return 105;
-//             break;
-//             case 9:
-//             return 110;
-//             break;
-//             case 10:
-//             return 120;
-//             break;
-//         default:
-//             return 100;
-// }
-// }
-
-// static float getWzspeed(uint16_t powerLimit){
-//     switch (powerLimit){
-//         case 70://------------------
-//         return 3500;
-//         break;
-//         case 75:
-//         return 3750;
-//         break;
-//         case 80://------------------
-//         return 4000;
-//         break;
-//         case 85:
-//         return 4175;
-//         break;
-//         case 90:
-//         return 4350;
-//         break;
-//         case 95:
-//         return 4525;
-//         break;
-//         case 100://------------------
-//         return 4700;
-//         break;
-//         case 105:
-//         return 4900;
-//         break;
-//         case 110:
-//         return 5100;
-//         break;
-//         case 120://------------------
-//         return 5300;
-//         break;
-//         default:
-//         return 3000;
-//         break;
-//     }
-// }
+extern Power_Data_s power_data; // 电机功率数据;
+extern float power_value;// 当前功率值
+uint64_t can_send_count=0;// 发送计数器
+float offset_angle_watch;
+float text_vx=0;
+static float freequence = 0,freequence_last=0; 
+extern float half_to_float(uint16_t half);
+extern Chassis_Ctrl_Cmd_s_uart chassis_rs485_recv;
+ float follow_kp,follow_kd;
+float super_speed=10000;
+float textkd=6,text_speed=10000;
+static float getRotato_K(uint8_t level){
+    switch(level){
+        case 1:
+            return textkd;
+            break;
+        case 2:
+            return 75;
+            break;
+            case 3:
+            return 80;
+            break;
+            case 4:
+            return 85;
+            break;
+            case 5:
+            return 90;
+            break;
+            case 6:
+            return 95;
+            break;
+            case 7:
+            return 100;
+            break;
+            case 8:
+            return 105;
+            break;
+            case 9:
+            return 110;
+            break;
+            case 10:
+            return 120;
+            break;
+        default:
+            return 100;
+}
+}
+extern uint16_t powerLim;
+static float getWzspeed(uint16_t powerLimit){
+    switch (powerLimit){
+        case 70://------------------
+        return 3500;
+        break;
+        case 75:
+        return 3750;
+        break;
+        case 80://------------------
+        return 4000;
+        break;
+        case 85:
+        return 4175;
+        break;
+        case 90:
+        return 4350;
+        break;
+        case 95:
+        return 4525;
+        break;
+        case 100://------------------
+        return 4700;
+        break;
+        case 105:
+        return 4900;
+        break;
+        case 110:
+        return 5100;
+        break;
+        case 120://------------------
+        return 5300;
+        break;
+        default:
+        return 3000;
+        break;
+    }
+}
 
 void joint_limit(float l_target, float r_target)
 {
@@ -804,7 +812,7 @@ void joint_limit(float l_target, float r_target)
 }
 //把左右关节目标角度限制在机械允许范围内，再写入 joint_l->ctrl.pos_set 和 joint_r->ctrl.pos_set。
 
-extern uint16_t powerLim;
+
 float offset_angle_watch;
 float angle_l,angle_r;
 volatile static float angle_avg;//, tor_avg;
@@ -938,12 +946,9 @@ void ChassisTask()
 {
     // 后续增加没收到消息的处理(双板的情况)
     // 获取新的控制信息
-
     RecoverCan1AfterSuperCapOffline();
 #if defined(CHASSIS_BOARD) || defined(ONE_BOARD)
     SubGetMessage(chassis_sub, &chassis_cmd_recv);
-
-
     /*-----------------------------------------------------------------------------------------------------------------------------------------------*/
     // chassis_cmd_recv_half_float = *(Chassis_Ctrl_Cmd_s_half_float *)CANCommGet(chasiss_can_comm);
     // chassis_cmd_recv.power_limit=1000;
@@ -958,19 +963,25 @@ void ChassisTask()
     //chassis_cmd_recv.SuperCap_flag_from_user=chassis_cmd_recv_half_float.SuperCap_flag_from_user;
     // chassis_cmd_recv.chassis_mode=chassis_rs485_recv.chassis_mode;//chassis_cmd_recv_half_float.chassis_mode;
     /*-----------------------------------------------------------------------------------------------------------------------------------------------*/
-
-
     // 裁判系统底盘电源位做去抖，避免单帧抖动导致瞬时无力
     /*------------------------------------------------------------------------------------------------------------------------------------------------*/
     static uint16_t mains_power_off_cnt = 0;
-    if (referee_data_for_ui->GameRobotState.mains_power_chassis_output == 0) {
-        if (mains_power_off_cnt < 1000)
-            mains_power_off_cnt++;
+    static uint8_t referee_power_state_valid = 0u;
+    if (referee_data_for_ui != NULL && referee_data_for_ui->GameRobotState.robot_id != 0u) {
+        referee_power_state_valid = 1u;
+    }
+    if (referee_power_state_valid) {
+        if (referee_data_for_ui->GameRobotState.mains_power_chassis_output == 0) {
+            if (mains_power_off_cnt < 1000)
+                mains_power_off_cnt++;
+        } else {
+            mains_power_off_cnt = 0;
+        }
+        if (mains_power_off_cnt > 30)
+            chassis_cmd_recv.chassis_mode = CHASSIS_ZERO_FORCE;
     } else {
         mains_power_off_cnt = 0;
     }
-    if (mains_power_off_cnt > 30)
-        chassis_cmd_recv.chassis_mode = CHASSIS_ZERO_FORCE;
     if (chassis_cmd_recv.chassis_mode == CHASSIS_ZERO_FORCE){ // 如果出现重要模块离线或遥控器设置为急停,让电机停止
     
         ChassisForceReset();
