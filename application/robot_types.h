@@ -256,7 +256,6 @@ typedef struct
     uint8_t reset_flag;
     uint8_t UI_SendFlag;
     uint8_t superCap_flag;
-    //uint8_t sync_belt_enable;
 } Chassis_Ctrl_Cmd_s_uart;
 
 typedef struct

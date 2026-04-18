@@ -3,8 +3,9 @@
 #include <string.h>
 
 #define CTRL_FLOAT_BASE_INDEX        2u
-#define CTRL_FLAGS_BASE_INDEX        (sizeof(Chassis_Ctrl_Cmd_s_uart) - 7u)
-#define CTRL_CHECKSUM_INDEX          (sizeof(Chassis_Ctrl_Cmd_s_uart) + 2u)
+#define CTRL_FLAGS_BASE_INDEX        (CTRL_FLOAT_BASE_INDEX + 44u)
+#define CTRL_FLAGS_COUNT             9u
+#define CTRL_CHECKSUM_INDEX          (CTRL_FLAGS_BASE_INDEX + CTRL_FLAGS_COUNT)
 
 #define UPLOAD_FLOAT_BASE_INDEX      2u
 #define UPLOAD_COLOR_INDEX           (sizeof(Chassis_Upload_Data_s_uart) + 1u)

@@ -40,6 +40,9 @@
 #define CENTER_GIMBAL_OFFSET_Y 0
 #define RADIUS_WHEEL           77.0f
 #define REDUCTION_RATIO_WHEEL  19.0f
+#define SYNC_BELT_SWITCH_SPEED_REF 5000.0f
+#define SYNC_BELT_LEFT_REF_SIGN      1.0f
+#define SYNC_BELT_RIGHT_REF_SIGN     -1.0f
 
 /* Control gains & limits */
 #define CHASSIS_SPEED 60000

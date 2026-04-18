@@ -127,6 +127,7 @@ uint8_t RobotCMDGetMecanumForceCtrl(void)
 {
     return mecanum_force_ctrl_enable;
 }
+
 // float imu_angle[3];
 // float imu_gyro[3];
 static PIDInstance PITCH_version_PID = {
@@ -745,7 +746,8 @@ static void RemoteControlSet()
 
     if (rc_update_flag == 1)
     {
-        if (rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
+        if (rc_data[TEMP].rc.switch_right != RC_SW_UP &&
+            rc_data[TEMP].rc.dial > 250 && rc_data[LAST].rc.dial < 250)
         {
             if (gimbal_cmd_send.nuc_mode != version_control)
                 gimbal_cmd_send.nuc_mode = version_control;
@@ -804,35 +806,24 @@ static void RemoteControlSet()
                 break;
         }
 
-        // 攀爬模式遥控入口暂时禁用（避免与跟随/不跟随模式耦合）
-        // if (rc_data[TEMP].rc.dial > 250)
-        // {
-        //     if(chassis_cmd_send.chassis_mode == CHASSIS_CLIMB || chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PULL)
-        //         chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PUSH;
-        // }
-        // if (rc_data[TEMP].rc.dial < -250)
-        // {
-        //     if(chassis_cmd_send.chassis_mode == CHASSIS_CLIMB || chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PUSH)
-        //         chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PULL;
-        // }
-        // if(rc_data[TEMP].rc.dial >= -250 && rc_data[TEMP].rc.dial <= 250)
-        // {
-        //     if(chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PULL || chassis_cmd_send.chassis_mode == CHASSIS_CLIMB_WITH_PUSH)
-        //         chassis_cmd_send.chassis_mode = CHASSIS_CLIMB;
-        // }
         rc_update_flag = 0;
     }
 
     // 右侧三段开关：底盘模式主切换（固定档位映射）
     // 该映射按“当前档位”每周期生效，不依赖 rc_update_flag。
-    // UP:   不跟随
+    // UP:   爬坡家族，拨轮中/上/下分别对应 CLIMB / PUSH / PULL
     // MID:  跟随云台
     // DOWN: 小陀螺
     switch (rc_data[TEMP].rc.switch_right)
     {
         case RC_SW_UP:
-            chassis_cmd_send.chassis_mode = CHASSIS_NO_FOLLOW;
-            //chassis_cmd_send.chassis_mode = CHASSIS_MECANUM_FORCE;
+            if (rc_data[TEMP].rc.dial > 250) {
+                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PUSH;
+            } else if (rc_data[TEMP].rc.dial < -250) {
+                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PULL;
+            } else {
+                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB;
+            }
             break;
         case RC_SW_DOWN:
             chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;

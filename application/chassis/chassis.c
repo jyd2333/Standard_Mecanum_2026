@@ -312,10 +312,10 @@ void ChassisInit()
     chassis_motor_config_4.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     motor_lb                                                               = DJIMotorInit(&chassis_motor_config_4);
 /*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
-/*tx_id = 1/2/3/4 后分别调用 DJIMotorInit()，把四个配置实例化成 motor_lf、motor_rf、motor_rb、motor_lb */
-/*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/    
+    /*tx_id = 1/2/3/4 后分别调用 DJIMotorInit()，把四个配置实例化成 motor_lf、motor_rf、motor_rb、motor_lb */
+    /*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/    
     Motor_Init_Config_s sync_belt_motor_config = {
-        .can_init_config.can_handle   = &hcan1,
+        .can_init_config.can_handle   = &hcan2,
         .controller_param_init_config = {
             .speed_PID = {
                 .Kp            = 3,
@@ -331,16 +331,16 @@ void ChassisInit()
             .speed_feedback_source = MOTOR_FEED,
             .outer_loop_type       = SPEED_LOOP,
             .close_loop_type       = SPEED_LOOP,
-            .feedforward_flag      = FEEDFORWARD_NONE,
+            .feedforward_flag      = CURRENT_FEEDFORWARD,
         },
         .motor_type = M3508,
     };
 
-    sync_belt_motor_config.can_init_config.tx_id                             = 7;
+    sync_belt_motor_config.can_init_config.tx_id                             = 3;
     sync_belt_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     sync_belt_motor_l                                                        = DJIMotorInit(&sync_belt_motor_config);
 
-    sync_belt_motor_config.can_init_config.tx_id                             = 8;
+    sync_belt_motor_config.can_init_config.tx_id                             = 4;
     sync_belt_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     sync_belt_motor_r                                                        = DJIMotorInit(&sync_belt_motor_config);
 
@@ -367,9 +367,9 @@ void ChassisInit()
                 .MaxOut = 25,
             },
             //  .other_angle_feedback_ptr = &gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET], // pitch?????
-             .other_angle_feedback_ptr = &Chassis_IMU_data->output.INS_angle[1],  //等待修改   
+             .other_angle_feedback_ptr = &Chassis_IMU_data->output.INS_angle[0],  //等待修改   
             // ??????????????,????,ins_task.md??c??bodyframe?????
-            .other_speed_feedback_ptr = &Chassis_IMU_data->INS_data.INS_gyro[0],
+            .other_speed_feedback_ptr = &Chassis_IMU_data->INS_data.INS_gyro[1],
             // .current_feedforward_ptr = &joint_tor_feedforward,
         },
         .controller_setting_init_config = {
@@ -378,7 +378,7 @@ void ChassisInit()
             .outer_loop_type       = ANGLE_LOOP,
             .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
-            .feedforward_flag      = CURRENT_FEEDFORWARD,
+            .feedforward_flag      = FEEDFORWARD_NONE,
             .control_range = {
                 .P_max = 12.5,
                 .V_max = 10,
@@ -852,7 +852,7 @@ volatile static float angle_avg;//, tor_avg;
 float angle_target, angle_l_target, angle_r_target;
 int16_t avg_count = 0, avg_i;
 // float l_offset = -0.311236, r_offset = 0.0434394;
-float l_offset = 0.7133, r_offset = 2.349;
+float l_offset = 0.69476, r_offset = 2.0938;
 float length_l_measure,length_r_measure,length_measure;
 float length_target;
 float angle_test = 0.07f;//0.17;
@@ -1039,8 +1039,8 @@ void ChassisTask()
         DJIMotorEnable(motor_rf);
         DJIMotorEnable(motor_lb);
         DJIMotorEnable(motor_rb);
-        // DMMotorEnable1(joint_l);
-        // DMMotorEnable1(joint_r);
+        DMMotorEnable1(joint_l);
+        DMMotorEnable1(joint_r);
         motor_lf->motor_controller.speed_PID.MaxOut = 16000;
         motor_rf->motor_controller.speed_PID.MaxOut = 16000;
         motor_lb->motor_controller.speed_PID.MaxOut = 16000;
@@ -1180,12 +1180,40 @@ void ChassisTask()
     //     }
     // }
         //决定腿的姿态控制策略
+    {
+        float sync_belt_ref = 0.0f;
+
+        switch (chassis_cmd_recv.chassis_mode) {
+            case CHASSIS_CLIMB:
+            case CHASSIS_CLIMB_WITH_PUSH:
+                sync_belt_ref = SYNC_BELT_SWITCH_SPEED_REF;
+                break;
+            case CHASSIS_CLIMB_WITH_PULL:
+            case CHASSIS_CLIMB_RETRACT:
+                sync_belt_ref = -SYNC_BELT_SWITCH_SPEED_REF;
+                break;
+            default:
+                break;
+        }
+
+        if (sync_belt_ref != 0.0f) {
+            float sync_belt_left_ref  = sync_belt_ref * SYNC_BELT_LEFT_REF_SIGN;
+            float sync_belt_right_ref = sync_belt_ref * SYNC_BELT_RIGHT_REF_SIGN;
+            DJIMotorSetRef(sync_belt_motor_l, sync_belt_left_ref);
+            DJIMotorSetRef(sync_belt_motor_r, sync_belt_right_ref);
+            DJIMotorEnable(sync_belt_motor_l);
+            DJIMotorEnable(sync_belt_motor_r);
+        } else {
+            DJIMotorStop(sync_belt_motor_l);
+            DJIMotorStop(sync_belt_motor_r);
+        }
+    }
     switch(leg_mode)
     {
         case LEG_ACTIVE_SUSPENSION:
             dipAngle = 0;
-            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
-            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_l->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
+            joint_r->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
             // joint_l->ctrl.kp_set = 150;
             // joint_l->ctrl.kd_set = 2;
             // joint_l->ctrl.tor_set = 7;
@@ -1197,8 +1225,8 @@ void ChassisTask()
             //dipAngle=0，保留关节力矩前馈，跟随 PID 的 Kp 保持 105。
         case LEG_CLIMB:
             dipAngle = 0.1;
-            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
-            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_l->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
+            joint_r->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
             // joint_l->ctrl.kp_set = 150;
             // joint_l->ctrl.kd_set = 2;
             // joint_l->ctrl.tor_set = 7;
@@ -1223,8 +1251,8 @@ void ChassisTask()
             //dipAngle=-0.1，关闭关节电流前馈，并把跟随 PID 的 Kp 降到 50，让动作更软一点。
         default:
             dipAngle = 0;
-            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
-            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_l->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
+            joint_r->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
             break;
     }
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
@@ -1262,16 +1290,10 @@ void ChassisTask()
     angle_r_target = r_offset - angle_target;
 
     length_diff = length_l_measure - length_r_measure;//算左右腿长度差
-    length_diff_tor = PIDCalculate(&Leg_Diff_PID, length_diff, 0);//通过 PID 生成“左右腿均衡补偿力矩”
-//按三次多项式给左右腿各自的基础力矩前馈，再叠加/减去长度差修正项。
-    joint_l_tor_feedforward = - 25.9625 * angle_l * angle_l * angle_l
-                              + 62.3065 * angle_l * angle_l
-                              - 51.3808 * angle_l
-                              + 18.8648 + length_diff_tor;
-    joint_r_tor_feedforward = - 25.9625 * angle_r * angle_r * angle_r
-                              + 62.3065 * angle_r * angle_r
-                              - 51.3808 * angle_r
-                              + 18.8648 - length_diff_tor;
+    // 机械拉簧已提供被动助力，暂时关闭原有力矩前馈。
+    length_diff_tor = 0.0f;
+    joint_l_tor_feedforward = 0.0f;
+    joint_r_tor_feedforward = 0.0f;
     
     // if(leg_mode == LEG_CLIMB_RETRACT)
     //     joint_limit(l_offset + angle_test, r_offset - angle_test);
