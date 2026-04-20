@@ -161,6 +161,22 @@ static PIDInstance Leg_Diff_PID = {
     .MaxOut        = 10,
 };
 /*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
+// 收腿平滑参数，避免切到收腿模式时姿态和同步带指令突变
+#define LEG_CLIMB_DIP_TARGET        0.1f
+#define LEG_RETRACT_DIP_TARGET     -0.1f
+#define LEG_DIP_SLEW_STEP           0.0010f
+#define LEG_FOLLOW_KP_SLEW_STEP     1.0f
+#define LEG_SYNC_BELT_SLEW_STEP    25.0f
+#define SYNC_BELT_DIRECTION_DEADBAND 10.0f
+#define LEG_RETRACT_TARGET_LENGTH_MIN   0.125f
+#define LEG_RETRACT_TARGET_LENGTH_STEP  0.0016f
+#define LEG_RETRACT_TARGET_TORQUE_MAX   20.0f
+#define LEG_RETRACT_TORQUE_FF_A       4.9440f
+#define LEG_RETRACT_TORQUE_FF_B     -17.9963f
+#define LEG_RETRACT_TORQUE_FF_C      20.2303f
+#define LEG_RETRACT_TORQUE_MIN_ANGLE  1.0f
+#define LEG_RETRACT_TORQUE_MAX_ANGLE  1.25f
+#define LEG_RETRACT_TORQUE_MAX        12.0f
 
 void ChassisInit()
 {
@@ -868,6 +884,28 @@ float safe_sqrt(float x)
     return __builtin_sqrtf(x);
 }
 
+static float CalcRetractTorqueFeedforward(float joint_angle)
+{
+    float angle = joint_angle;
+    float torque_ff;
+
+    if (angle < LEG_RETRACT_TORQUE_MIN_ANGLE)
+        angle = LEG_RETRACT_TORQUE_MIN_ANGLE;
+    else if (angle > LEG_RETRACT_TORQUE_MAX_ANGLE)
+        angle = LEG_RETRACT_TORQUE_MAX_ANGLE;
+
+    torque_ff = LEG_RETRACT_TORQUE_FF_A * angle * angle
+              + LEG_RETRACT_TORQUE_FF_B * angle
+              + LEG_RETRACT_TORQUE_FF_C;
+
+    if (torque_ff < 0.0f)
+        torque_ff = 0.0f;
+    else if (torque_ff > LEG_RETRACT_TORQUE_MAX)
+        torque_ff = LEG_RETRACT_TORQUE_MAX;
+
+    return torque_ff;
+}
+
 static void RecoverCan1AfterSuperCapOffline(void)
 {
     static uint8_t supercap_seen_online = 0;
@@ -1054,6 +1092,12 @@ void ChassisTask()
     static float current_speed_vw, vw_set;
     static ramp_t rotate_ramp;
     static float dipAngle = 0;
+    static float dipAngleTarget = 0;
+    static float retract_length_target_state = 0;
+    static float sync_belt_ref_state = 0;
+    static uint8_t retract_target_initialized = 0;
+    static uint8_t follow_joint_zero_triggered = 0;
+    float chassis_follow_kp_target = 105.0f;
 
     // offset_angle       = chassis_cmd_recv.offset_angle + chassis_cmd_recv.gimbal_error_angle;
     // offset_angle_watch = offset_angle;
@@ -1068,6 +1112,9 @@ void ChassisTask()
     // chassis_cmd_recv.offset_angle = 0;
 /*---------------------------------------------------------------------底盘模式切换核心----------------------------------------------------------------------------*/
     // 根据控制模式设定旋转速度
+    if (chassis_cmd_recv.chassis_mode != CHASSIS_FOLLOW_GIMBAL_YAW)
+        follow_joint_zero_triggered = 0;
+
     switch (chassis_cmd_recv.chassis_mode) {
         case CHASSIS_NO_FOLLOW:
             chassis_cmd_recv.wz = 0.0f;
@@ -1079,6 +1126,11 @@ void ChassisTask()
             break;
         case CHASSIS_FOLLOW_GIMBAL_YAW:
             powerLim = 0;
+            if (!follow_joint_zero_triggered) {          
+                l_offset = 0.0f;
+                r_offset = 0.0f;
+                follow_joint_zero_triggered = 1;
+            }
             chassis_cmd_recv.wz = PIDCalculate(&Chassis_Follow_PID, offset_angle, 0);
             cos_theta = arm_cos_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
             sin_theta = arm_sin_f32(-chassis_cmd_recv.offset_angle * DEGREE_2_RAD);
@@ -1180,81 +1232,56 @@ void ChassisTask()
     //     }
     // }
         //决定腿的姿态控制策略
-    {
-        float sync_belt_ref = 0.0f;
-
-        switch (chassis_cmd_recv.chassis_mode) {
-            case CHASSIS_CLIMB:
-            case CHASSIS_CLIMB_WITH_PUSH:
-                sync_belt_ref = SYNC_BELT_SWITCH_SPEED_REF;
-                break;
-            case CHASSIS_CLIMB_WITH_PULL:
-            case CHASSIS_CLIMB_RETRACT:
-                sync_belt_ref = -SYNC_BELT_SWITCH_SPEED_REF;
-                break;
-            default:
-                break;
-        }
-
-        if (sync_belt_ref != 0.0f) {
-            float sync_belt_left_ref  = sync_belt_ref * SYNC_BELT_LEFT_REF_SIGN;
-            float sync_belt_right_ref = sync_belt_ref * SYNC_BELT_RIGHT_REF_SIGN;
-            DJIMotorSetRef(sync_belt_motor_l, sync_belt_left_ref);
-            DJIMotorSetRef(sync_belt_motor_r, sync_belt_right_ref);
-            DJIMotorEnable(sync_belt_motor_l);
-            DJIMotorEnable(sync_belt_motor_r);
-        } else {
-            DJIMotorStop(sync_belt_motor_l);
-            DJIMotorStop(sync_belt_motor_r);
-        }
-    }
     switch(leg_mode)
     {
         case LEG_ACTIVE_SUSPENSION:
-            dipAngle = 0;
-            joint_l->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
-            joint_r->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
+            dipAngleTarget = 0.05f;
+            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             // joint_l->ctrl.kp_set = 150;
             // joint_l->ctrl.kd_set = 2;
             // joint_l->ctrl.tor_set = 7;
             // joint_r->ctrl.kp_set = 150;
             // joint_r->ctrl.kd_set = 2;
             // joint_r->ctrl.tor_set = -7;
-            Chassis_Follow_PID.Kp = 105;
+            chassis_follow_kp_target = 105.0f;
             break;
             //dipAngle=0，保留关节力矩前馈，跟随 PID 的 Kp 保持 105。
         case LEG_CLIMB:
-            dipAngle = 0.1;
-            joint_l->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
-            joint_r->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
+            dipAngleTarget = LEG_CLIMB_DIP_TARGET;
+            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             // joint_l->ctrl.kp_set = 150;
             // joint_l->ctrl.kd_set = 2;
             // joint_l->ctrl.tor_set = 7;
             // joint_r->ctrl.kp_set = 150;
             // joint_r->ctrl.kd_set = 2;
             // joint_r->ctrl.tor_set = -7;
-            Chassis_Follow_PID.Kp = 105;
+            chassis_follow_kp_target = 105.0f;
             break;
             //意思是让机身带一点前倾/下沉目标姿态
         case LEG_CLIMB_RETRACT:
-            dipAngle = -0.1;
-            joint_l->motor_settings.feedforward_flag = 0;
-            joint_r->motor_settings.feedforward_flag = 0;
+            dipAngleTarget = LEG_RETRACT_DIP_TARGET;
+            joint_l->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
+            joint_r->motor_settings.feedforward_flag = CURRENT_FEEDFORWARD;
             // joint_l->ctrl.kp_set = 50;
             // joint_l->ctrl.kd_set = 4;
             // joint_l->ctrl.tor_set = -6;
             // joint_r->ctrl.kp_set = 50;
             // joint_r->ctrl.kd_set = 4;
             // joint_r->ctrl.tor_set = 6;
-            Chassis_Follow_PID.Kp = 50;
+            chassis_follow_kp_target = 50.0f;
             break;
             //dipAngle=-0.1，关闭关节电流前馈，并把跟随 PID 的 Kp 降到 50，让动作更软一点。
         default:
-            dipAngle = 0;
+            dipAngleTarget = 0.0f;
             joint_l->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
             joint_r->motor_settings.feedforward_flag = FEEDFORWARD_NONE;
+            chassis_follow_kp_target = 105.0f;
             break;
     }
+    dipAngle += clamp_absf(dipAngleTarget - dipAngle, LEG_DIP_SLEW_STEP);
+    Chassis_Follow_PID.Kp += clamp_absf(chassis_follow_kp_target - Chassis_Follow_PID.Kp, LEG_FOLLOW_KP_SLEW_STEP);
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     //把左右关节编码器角度统一到同一物理方向，并扣掉安装零偏。
     angle_l = joint_l->measure.pos - l_offset;
@@ -1288,12 +1315,51 @@ void ChassisTask()
     angle_target = (-0.2072 + safe_sqrt(0.2072 * 0.2072 + 4 * 0.05814 * (0.107 - length_target)))/(-2 * 0.05814);//把目标腿长反解回目标关节角；这里用了 safe_sqrt() 防止判别式为负。
     angle_l_target = angle_target + l_offset;//再把统一角转换回左右关节各自的命令角度
     angle_r_target = r_offset - angle_target;
+    // if (leg_mode == LEG_CLIMB_RETRACT) {
+    //     if (!retract_target_initialized) {
+    //         retract_length_target_state = length_measure;
+    //         retract_target_initialized = 1;
+    //         Leg_Retract_Length_PID.Iout = 0.0f;
+    //         Leg_Retract_Length_PID.ITerm = 0.0f;
+    //         Leg_Retract_Length_PID.Last_Err = 0.0f;
+    //         Leg_Retract_Length_PID.Last_Output = 0.0f;
+    //         Leg_Retract_Length_PID.Last_Dout = 0.0f;
+    //     }
+    //     retract_length_target_state += clamp_absf(LEG_RETRACT_TARGET_LENGTH_MIN - retract_length_target_state,
+    //                                               LEG_RETRACT_TARGET_LENGTH_STEP);
+    //     if (retract_length_target_state > length_measure)
+    //         retract_length_target_state = length_measure;
+    // } else {
+    //     retract_length_target_state = length_measure;
+    //     retract_target_initialized = 0;
+    //     Leg_Retract_Length_PID.Iout = 0.0f;
+    //     Leg_Retract_Length_PID.ITerm = 0.0f;
+    //     Leg_Retract_Length_PID.Last_Err = 0.0f;
+    //     Leg_Retract_Length_PID.Last_Output = 0.0f;
+    //     Leg_Retract_Length_PID.Last_Dout = 0.0f;
+    // }
 
     length_diff = length_l_measure - length_r_measure;//算左右腿长度差
-    // 机械拉簧已提供被动助力，暂时关闭原有力矩前馈。
-    length_diff_tor = 0.0f;
-    joint_l_tor_feedforward = 0.0f;
-    joint_r_tor_feedforward = 0.0f;
+    // if (leg_mode == LEG_CLIMB_RETRACT) {
+    //     float retract_target_torque = -PIDCalculate(&Leg_Retract_Length_PID, length_measure, retract_length_target_state);
+
+    //     if (retract_target_torque < 0.0f)
+    //         retract_target_torque = 0.0f;
+    //     else if (retract_target_torque > LEG_RETRACT_TARGET_TORQUE_MAX)
+    //         retract_target_torque = LEG_RETRACT_TARGET_TORQUE_MAX;
+
+    //     length_diff_tor = 0.0f;
+    //     joint_l_tor_feedforward = CalcRetractTorqueFeedforward(angle_l) + retract_target_torque;
+    //     joint_r_tor_feedforward = CalcRetractTorqueFeedforward(angle_r) + retract_target_torque;
+    // } else if ((joint_l->motor_settings.feedforward_flag & CURRENT_FEEDFORWARD) != 0) {
+    //     length_diff_tor = PIDCalculate(&Leg_Diff_PID, length_diff, 0.0f);
+    //     joint_l_tor_feedforward = length_diff_tor;
+    //     joint_r_tor_feedforward = -length_diff_tor;
+    // } else {
+        length_diff_tor = 0.0f;
+        joint_l_tor_feedforward = 0.0f;
+        joint_r_tor_feedforward = 0.0f;
+//}
     
     // if(leg_mode == LEG_CLIMB_RETRACT)
     //     joint_limit(l_offset + angle_test, r_offset - angle_test);
@@ -1311,6 +1377,39 @@ void ChassisTask()
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
     // 根据控制模式进行正运动学解算,计算底盘输出
     MecanumCalculate();//把 chassis_vx/chassis_vy/wz 转成四轮目标转速 vt_*，并更新摩擦补偿状态。
+
+    {
+        float sync_belt_ref_target = 0.0f;
+
+        switch (chassis_cmd_recv.chassis_mode) {
+            case CHASSIS_CLIMB:
+            case CHASSIS_CLIMB_WITH_PULL:
+            case CHASSIS_CLIMB_WITH_PUSH:
+            case CHASSIS_CLIMB_RETRACT:
+                if (chassis_vx > SYNC_BELT_DIRECTION_DEADBAND)
+                    sync_belt_ref_target = SYNC_BELT_SWITCH_SPEED_REF;
+                else if (chassis_vx < -SYNC_BELT_DIRECTION_DEADBAND)
+                    sync_belt_ref_target = -SYNC_BELT_SWITCH_SPEED_REF;
+                break;
+            default:
+                break;
+        }
+
+        sync_belt_ref_state += clamp_absf(sync_belt_ref_target - sync_belt_ref_state, LEG_SYNC_BELT_SLEW_STEP);
+
+        if (fabsf(sync_belt_ref_state) > 1.0f) {
+            float sync_belt_left_ref  = sync_belt_ref_state * SYNC_BELT_LEFT_REF_SIGN;
+            float sync_belt_right_ref = sync_belt_ref_state * SYNC_BELT_RIGHT_REF_SIGN;
+            DJIMotorSetRef(sync_belt_motor_l, sync_belt_left_ref);
+            DJIMotorSetRef(sync_belt_motor_r, sync_belt_right_ref);
+            DJIMotorEnable(sync_belt_motor_l);
+            DJIMotorEnable(sync_belt_motor_r);
+        } else {
+            sync_belt_ref_state = 0.0f;
+            DJIMotorStop(sync_belt_motor_l);
+            DJIMotorStop(sync_belt_motor_r);
+        }
+    }
 
     if (chassis_cmd_recv.mecanum_force_enable && (chassis_cmd_recv.chassis_mode != CHASSIS_ZERO_FORCE))
         ChassisForceControlMecanum();
