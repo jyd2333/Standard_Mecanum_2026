@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @file chassis.c
  * @author NeoZeng neozng1@hnu.edu.cn
  * @brief 底盘应用,负责接收robot_cmd的控制命令并根据命令进行运动学解算,得到输出
@@ -177,6 +177,8 @@ static PIDInstance Leg_Diff_PID = {
 #define LEG_RETRACT_TORQUE_MIN_ANGLE  1.0f
 #define LEG_RETRACT_TORQUE_MAX_ANGLE  1.25f
 #define LEG_RETRACT_TORQUE_MAX        12.0f
+#define LEG_RETRACT_MANUAL_BOOST_TORQUE 25.0f
+#define LEG_RETRACT_MANUAL_TORQUE_LIMIT 28.0f
 
 void ChassisInit()
 {
@@ -906,6 +908,17 @@ static float CalcRetractTorqueFeedforward(float joint_angle)
     return torque_ff;
 }
 
+static uint8_t LegRetractManualBoostEnabled(void)
+{
+    if (!RemoteControlIsOnline())
+        return 0u;
+
+    if (rc_ctrl[TEMP].key[KEY_PRESS].z != 0u)
+        return 1u;
+
+    return 0u;
+}
+
 static void RecoverCan1AfterSuperCapOffline(void)
 {
     static uint8_t supercap_seen_online = 0;
@@ -982,6 +995,7 @@ static void UpdateChassisDebugFeedback(void)
     chassis_feedback_data.wheel_ref[RF] = vt_rf;
     chassis_feedback_data.wheel_ref[RB] = vt_rb;
     chassis_feedback_data.wheel_ref[LB] = vt_lb;
+
 
     chassis_feedback_data.wheel_pid_output[LF] = motor_lf->motor_controller.speed_PID.Output;
     chassis_feedback_data.wheel_pid_output[RF] = motor_rf->motor_controller.speed_PID.Output;
@@ -1339,23 +1353,25 @@ void ChassisTask()
     //     Leg_Retract_Length_PID.Last_Dout = 0.0f;
     // }
 
-    length_diff = length_l_measure - length_r_measure;//算左右腿长度差
-    // if (leg_mode == LEG_CLIMB_RETRACT) {
-    //     float retract_target_torque = -PIDCalculate(&Leg_Retract_Length_PID, length_measure, retract_length_target_state);
+    length_diff = length_l_measure - length_r_measure;//绠楀乏鍙宠吙闀垮害宸?
+    if (leg_mode == LEG_CLIMB_RETRACT) {
+        float retract_torque_l = 0.0f;
+        float retract_torque_r = 0.0f;
 
-    //     if (retract_target_torque < 0.0f)
-    //         retract_target_torque = 0.0f;
-    //     else if (retract_target_torque > LEG_RETRACT_TARGET_TORQUE_MAX)
-    //         retract_target_torque = LEG_RETRACT_TARGET_TORQUE_MAX;
+        if (LegRetractManualBoostEnabled()) {
+            retract_torque_l = CalcRetractTorqueFeedforward(angle_l) + LEG_RETRACT_MANUAL_BOOST_TORQUE;
+            retract_torque_r = CalcRetractTorqueFeedforward(angle_r) + LEG_RETRACT_MANUAL_BOOST_TORQUE;
 
-    //     length_diff_tor = 0.0f;
-    //     joint_l_tor_feedforward = CalcRetractTorqueFeedforward(angle_l) + retract_target_torque;
-    //     joint_r_tor_feedforward = CalcRetractTorqueFeedforward(angle_r) + retract_target_torque;
-    // } else if ((joint_l->motor_settings.feedforward_flag & CURRENT_FEEDFORWARD) != 0) {
-    //     length_diff_tor = PIDCalculate(&Leg_Diff_PID, length_diff, 0.0f);
-    //     joint_l_tor_feedforward = length_diff_tor;
-    //     joint_r_tor_feedforward = -length_diff_tor;
-    // } else {
+            if (retract_torque_l > LEG_RETRACT_MANUAL_TORQUE_LIMIT)
+                retract_torque_l = LEG_RETRACT_MANUAL_TORQUE_LIMIT;
+            if (retract_torque_r > LEG_RETRACT_MANUAL_TORQUE_LIMIT)
+                retract_torque_r = LEG_RETRACT_MANUAL_TORQUE_LIMIT;
+        }
+
+        length_diff_tor = 0.0f;
+        joint_l_tor_feedforward = retract_torque_l;
+        joint_r_tor_feedforward = retract_torque_r;
+    } else {
         length_diff_tor = 0.0f;
         joint_l_tor_feedforward = 0.0f;
         joint_r_tor_feedforward = 0.0f;

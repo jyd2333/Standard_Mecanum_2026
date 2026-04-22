@@ -117,6 +117,18 @@ float vision_yaw_vel = 0; // 视觉提供的yaw速度前馈
 uint8_t SuperCap_flag_from_user = 0; // 超电标志位
 uint8_t rc_update_flag = 0;//遥控器数据更新标志位（防止同一个周期多次触发）
 static uint8_t mecanum_force_ctrl_enable = 0u; // 麦轮力控独立开关（与 chassis_mode 解耦）
+static chassis_mode_e remote_climb_mode = CHASSIS_CLIMB_RETRACT;
+
+static chassis_mode_e CycleRemoteClimbMode(chassis_mode_e current_mode)
+{
+    switch (current_mode) {
+        case CHASSIS_CLIMB:
+            return CHASSIS_CLIMB_RETRACT;
+        case CHASSIS_CLIMB_RETRACT:
+        default:
+            return CHASSIS_CLIMB;
+    }
+}
 
 void RobotCMDSetMecanumForceCtrl(uint8_t enable)
 {
@@ -704,6 +716,7 @@ static void EmergencyHandler()
     shoot_cmd_send.load_mode      = LOAD_STOP;
     shoot_cmd_send.shoot_mode     = SHOOT_OFF;
     SuperCap_flag_from_user     = SUPERCAP_UNUSE;
+    remote_climb_mode = CHASSIS_CLIMB_RETRACT;
     memset(rc_mode, 1, sizeof(uint8_t));
     memset(rc_mode + 1, 0, sizeof(uint8_t) * 4);
     LOGERROR("[CMD] emergency stop!");
@@ -742,7 +755,7 @@ static void RemoteControlSet()
     gimbal_cmd_send.gimbal_mode = GIMBAL_GYRO_MODE;
     shoot_cmd_send.shoot_rate   = 16; // 射频默认30Hz
 
-    // 拨轮上抬沿触发：切换自瞄/关闭自瞄（仅触发一次，靠 rc_update_flag 防抖）
+    // 拨轮只保留给视觉自瞄：上抬沿触发开/关（仅触发一次，靠 rc_update_flag 防抖）
 
     if (rc_update_flag == 1)
     {
@@ -782,6 +795,15 @@ static void RemoteControlSet()
                 break;
 
             case RC_SW_DOWN:
+                // 单独给爬坡模式的收腿切换：左拨杆 MID->DOWN 触发收腿
+                // 仅在右拨杆为 UP（爬坡家族）时生效，避免与常规射击触发冲突
+                if (rc_data[LAST].rc.switch_left == RC_SW_MID &&
+                    rc_data[TEMP].rc.switch_right == RC_SW_UP)
+                {
+                    //remote_climb_mode = CHASSIS_CLIMB_RETRACT;
+                    remote_climb_mode = CycleRemoteClimbMode(remote_climb_mode);
+                    break;
+                }
 
                 if (gimbal_cmd_send.nuc_mode == none_version_control)
                 {
@@ -806,24 +828,24 @@ static void RemoteControlSet()
                 break;
         }
 
+        // if (rc_data[TEMP].rc.switch_right == RC_SW_UP &&
+        //     rc_data[LAST].rc.switch_right == RC_SW_MID)
+        // {
+        //     remote_climb_mode = CycleRemoteClimbMode(remote_climb_mode);
+        // }
+
         rc_update_flag = 0;
     }
 
     // 右侧三段开关：底盘模式主切换（固定档位映射）
     // 该映射按“当前档位”每周期生效，不依赖 rc_update_flag。
-    // UP:   爬坡家族，拨轮中/上/下分别对应 CLIMB / PUSH / PULL
+    // UP:   爬坡家族。每次 MID->UP 在 CLIMB / RETRACT 间切换，首次进入为 CLIMB
     // MID:  跟随云台
     // DOWN: 小陀螺
     switch (rc_data[TEMP].rc.switch_right)
     {
         case RC_SW_UP:
-            if (rc_data[TEMP].rc.dial > 250) {
-                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PUSH;
-            } else if (rc_data[TEMP].rc.dial < -250) {
-                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB_WITH_PULL;
-            } else {
-                chassis_cmd_send.chassis_mode = CHASSIS_CLIMB;
-            }
+            chassis_cmd_send.chassis_mode = remote_climb_mode;
             break;
         case RC_SW_DOWN:
             chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
@@ -1352,6 +1374,7 @@ static void RobotCMDTaskChassisBoard(void)
             chassis_cmd_send.vx = chassis_rs485_recv.vx;
             chassis_cmd_send.vy = chassis_rs485_recv.vy;
             chassis_cmd_send.wz = chassis_rs485_recv.wz;
+            if (rc_data[TEMP].rc.switch_right != RC_SW_UP)
             chassis_cmd_send.chassis_mode = chassis_rs485_recv.chassis_mode;
             chassis_cmd_send.offset_angle = chassis_rs485_recv.offset_angle;
             chassis_cmd_send.gimbal_error_angle = chassis_rs485_recv.gimbal_error_angle;
@@ -1359,6 +1382,12 @@ static void RobotCMDTaskChassisBoard(void)
             chassis_cmd_send.mecanum_force_enable = (chassis_rs485_recv.UI_SendFlag & MECANUM_FORCE_UI_FLAG_BIT) ? 1u : 0u;
         }
     }
+    // 最终态保护：右拨杆在 UP 时，底盘模式始终由本地爬坡模式机决定
+    // 防止前面链路（如串口同步）把 CLIMB_RETRACT 覆盖掉
+    if (rc_data[TEMP].rc.switch_right == RC_SW_UP) {
+        chassis_cmd_send.chassis_mode = remote_climb_mode;
+    }
+
     RobotCMDUpdateShootReferee(referee_data->GameRobotState.shooter_id1_42mm_cooling_rate,
                                referee_data->PowerHeatData.shooter_42mm_heat,
                                referee_data->GameRobotState.shooter_id1_42mm_cooling_limit);
