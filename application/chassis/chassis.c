@@ -179,6 +179,10 @@ static PIDInstance Leg_Diff_PID = {
 #define LEG_RETRACT_TORQUE_MAX        12.0f
 #define LEG_RETRACT_MANUAL_BOOST_TORQUE 25.0f
 #define LEG_RETRACT_MANUAL_TORQUE_LIMIT 28.0f
+#define LEG_RETRACT_LIMIT_TORQUE_THRESHOLD 18.0f
+#define LEG_RETRACT_LIMIT_VEL_THRESHOLD     0.20f
+#define LEG_RETRACT_LIMIT_DETECT_COUNT      25u
+#define LEG_RETRACT_HOLD_TORQUE_MIN         4.0f
 
 void ChassisInit()
 {
@@ -1111,6 +1115,9 @@ void ChassisTask()
     static float sync_belt_ref_state = 0;
     static uint8_t retract_target_initialized = 0;
     static uint8_t follow_joint_zero_triggered = 0;
+    static uint16_t retract_limit_cnt_l = 0u;
+    static uint16_t retract_limit_cnt_r = 0u;
+    static uint8_t retract_limit_latched = 0u;
     float chassis_follow_kp_target = 105.0f;
 
     // offset_angle       = chassis_cmd_recv.offset_angle + chassis_cmd_recv.gimbal_error_angle;
@@ -1357,8 +1364,47 @@ void ChassisTask()
     if (leg_mode == LEG_CLIMB_RETRACT) {
         float retract_torque_l = 0.0f;
         float retract_torque_r = 0.0f;
+        uint8_t retract_manual_boost = LegRetractManualBoostEnabled();
 
-        if (LegRetractManualBoostEnabled()) {
+        if (!retract_limit_latched) {
+            if (retract_manual_boost &&
+                fabsf(joint_l->measure.tor) > LEG_RETRACT_LIMIT_TORQUE_THRESHOLD &&
+                fabsf(joint_l->measure.vel) < LEG_RETRACT_LIMIT_VEL_THRESHOLD) {
+                if (retract_limit_cnt_l < 65535u)
+                    retract_limit_cnt_l++;
+            } else {
+                retract_limit_cnt_l = 0u;
+            }
+
+            if (retract_manual_boost &&
+                fabsf(joint_r->measure.tor) > LEG_RETRACT_LIMIT_TORQUE_THRESHOLD &&
+                fabsf(joint_r->measure.vel) < LEG_RETRACT_LIMIT_VEL_THRESHOLD) {
+                if (retract_limit_cnt_r < 65535u)
+                    retract_limit_cnt_r++;
+            } else {
+                retract_limit_cnt_r = 0u;
+            }
+
+            if (retract_limit_cnt_l >= LEG_RETRACT_LIMIT_DETECT_COUNT ||
+                retract_limit_cnt_r >= LEG_RETRACT_LIMIT_DETECT_COUNT) {
+                retract_limit_latched = 1u;
+            }
+        }
+
+        if (retract_limit_latched) {
+            retract_torque_l = CalcRetractTorqueFeedforward(angle_l);
+            retract_torque_r = CalcRetractTorqueFeedforward(angle_r);
+
+            if (retract_torque_l < LEG_RETRACT_HOLD_TORQUE_MIN)
+                retract_torque_l = LEG_RETRACT_HOLD_TORQUE_MIN;
+            if (retract_torque_r < LEG_RETRACT_HOLD_TORQUE_MIN)
+                retract_torque_r = LEG_RETRACT_HOLD_TORQUE_MIN;
+
+            if (retract_torque_l > LEG_RETRACT_TORQUE_MAX)
+                retract_torque_l = LEG_RETRACT_TORQUE_MAX;
+            if (retract_torque_r > LEG_RETRACT_TORQUE_MAX)
+                retract_torque_r = LEG_RETRACT_TORQUE_MAX;
+        } else if (retract_manual_boost) {
             retract_torque_l = CalcRetractTorqueFeedforward(angle_l) + LEG_RETRACT_MANUAL_BOOST_TORQUE;
             retract_torque_r = CalcRetractTorqueFeedforward(angle_r) + LEG_RETRACT_MANUAL_BOOST_TORQUE;
 
@@ -1372,10 +1418,13 @@ void ChassisTask()
         joint_l_tor_feedforward = retract_torque_l;
         joint_r_tor_feedforward = retract_torque_r;
     } else {
+        retract_limit_cnt_l = 0u;
+        retract_limit_cnt_r = 0u;
+        retract_limit_latched = 0u;
         length_diff_tor = 0.0f;
         joint_l_tor_feedforward = 0.0f;
         joint_r_tor_feedforward = 0.0f;
-//}
+    }
     
     // if(leg_mode == LEG_CLIMB_RETRACT)
     //     joint_limit(l_offset + angle_test, r_offset - angle_test);

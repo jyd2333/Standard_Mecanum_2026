@@ -1,4 +1,4 @@
-/*------------------------------------------------------------------------------*/
+﻿/*------------------------------------------------------------------------------*/
 #include "stdio.h"//标准库
 #include <math.h>
 /*------------------------------------------------------------------------------*/
@@ -41,10 +41,34 @@ static const float yaw_vel_deadzone = 0.1f;         //yaw 速度死区
 extern float vision_yaw_vel;                        //视觉给出的 yaw 速度
 static float yaw_feedforward_vel_gain = -0.8f;      //定义 yaw 速度前馈增益
 const float pitch_offset = 7.7f;                    //作为 pitch 偏置量
-float yaw_gyro_twoboard=0,yaw_current_feedforward;  //yaw轴电流前馈
-float pitch_current_feedforward,K_pitch_current_feedforward,B_pitch_current_feedforward;//俯仰轴电流前馈的 PID 参数
+float yaw_gyro_twoboard = 0, yaw_current_feedforward;  //yaw轴电流前馈
+float pitch_current_feedforward, K_pitch_current_feedforward, B_pitch_current_feedforward;//俯仰轴电流前馈的 PID 参数
 float pitch_tor_feedforward = 0;                    //保存 pitch 力矩前馈
 float pitch_gyro_measure = 0;                       //保存 pitch 轴陀螺仪测量值
+/* Pitch gravity compensation (DM torque domain) */
+#define PITCH_GRAVITY_FF_ONEKEY_GAIN (-1.2f)   // one-key overall gain
+#define PITCH_GRAVITY_FF_BASE_AMP    (2.20f)  // gravity compensation amplitude
+#define PITCH_GRAVITY_FF_ANGLE_BIAS  (0.0f)   // rad
+#define PITCH_GRAVITY_FF_DAMPING_K   (-0.05f)  // damping on pitch gyro(rad/s)
+#define PITCH_GRAVITY_FF_MIN         (-3.0f)  // torque feedforward lower limit
+#define PITCH_GRAVITY_FF_MAX         (3.0f)   // torque feedforward upper limit
+
+static float clampf_local(float x, float min, float max)
+{
+    if (x < min)
+        return min;
+    if (x > max)
+        return max;
+    return x;
+}
+
+static float PitchGravityTorqueFeedforward(float pitch_angle_rad, float pitch_gyro_rads)
+{
+    const float gravity_term = PITCH_GRAVITY_FF_BASE_AMP * sinf(pitch_angle_rad - PITCH_GRAVITY_FF_ANGLE_BIAS);
+    const float damping_term = PITCH_GRAVITY_FF_DAMPING_K * pitch_gyro_rads;
+    const float ff_raw       = PITCH_GRAVITY_FF_ONEKEY_GAIN * (gravity_term - damping_term);
+    return clampf_local(ff_raw, PITCH_GRAVITY_FF_MIN, PITCH_GRAVITY_FF_MAX);
+}
 // static PID_Setting_s pitch_settings,yaw_settings;//保存 pitch 和 yaw 的 PID 设置参数
 // extern float imu_angle[3];                       //IMU 角度数组
 // extern float imu_gyro[3];                        //IMU 角速度数组
@@ -206,7 +230,7 @@ void GimbalInit()
                 .MaxOut = 10,
             },
             .speed_PID = {
-                .Kp = 1.2,
+                .Kp = 1.3,
                 .Ki = 0.0,
                 .Kd = 0.001,
                 .DeadBand = 0,
@@ -219,7 +243,7 @@ void GimbalInit()
             // ??????????????,????,ins_task.md??c??bodyframe?????
             .other_speed_feedback_ptr = &gimbal_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET],
             .speed_feedforward_ptr = &pitch_speed_feedforward,
-            // .current_feedforward_ptr = &pitch_tor_feedforward,
+            .current_feedforward_ptr = &pitch_tor_feedforward,
         },
         .controller_setting_init_config = {
             .angle_feedback_source = OTHER_FEED,
@@ -228,7 +252,7 @@ void GimbalInit()
             .close_loop_type       = SPEED_LOOP | ANGLE_LOOP,
             .motor_reverse_flag    = MOTOR_DIRECTION_NORMAL,
             .feedback_reverse_flag = FEEDBACK_DIRECTION_NORMAL,
-            .feedforward_flag      = SPEED_FEEDFORWARD,
+            .feedforward_flag      = SPEED_FEEDFORWARD | CURRENT_FEEDFORWARD,
             .control_range = {
                 .P_max = 12.5,
                 .V_max = 30,
@@ -479,8 +503,11 @@ void GimbalTask()
     // pitch_tor_feedforward = 0.42146 * cos(1.43 + gimbal_IMU_data->output.INS_angle[0]);
     // pitch_tor_feedforward = 
     // pitch_current_feedforward = PitchNonlinear(*pitch_motor->motor_controller.other_angle_feedback_ptr);
-   
+
+    const float pitch_angle_measure = gimbal_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET];
     pitch_gyro_measure =  gimbal_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET];
+    pitch_tor_feedforward = PitchGravityTorqueFeedforward(pitch_angle_measure, pitch_gyro_measure);
+    pitch_current_feedforward = pitch_tor_feedforward;
     switch (gimbal_cmd_recv.gimbal_mode) {
         //停掉 DM pitch 电机，并把 angle/speed 两个 PID 的积分项清零，同时关掉速度前馈，防止重新使能时积分残留
         case GIMBAL_ZERO_FORCE:
@@ -488,6 +515,8 @@ void GimbalTask()
             pitch_motor->motor_controller.speed_PID.Iout = 0;
             pitch_motor->motor_controller.angle_PID.Iout = 0;
             pitch_speed_feedforward = 0;
+            pitch_tor_feedforward = 0;
+            pitch_current_feedforward = 0;
             break;
         case GIMBAL_GYRO_MODE://使能 DM pitch 电机，切换到角度环和速度环都使用 IMU 反馈的模式，开启角度环控制
             DMMotorEnable1(pitch_motor);
@@ -520,8 +549,8 @@ void GimbalTask()
        
             DJIMotorSetRef(pitch_motor, pitch_offset + gimbal_cmd_recv.pitch); //对 pitch 角度参考加上一个固定的偏置，确保它在一个合理的范围内，避免过度转动导致损坏，同时也可以根据实际情况调整这个偏置量
             // DJIMotorSetRef(pitch_motor, pitch_test); 
-           
-            
+            pitch_speed_feedforward = 0;
+
         break;
         default:
             break;
@@ -573,4 +602,8 @@ void GimbalTask()
     // gimbal_feedback_data.pitch_total_angle            = pitch_motor->measure.total_angle;
     PubPushMessage(gimbal_pub, (void *)&gimbal_feedback_data);//把最新的 gimbal_feedback_data 发布到消息中心，供别的模块订阅读取
 }
+
+
+
+
 

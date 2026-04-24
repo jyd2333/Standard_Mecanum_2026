@@ -1375,7 +1375,7 @@ static void RobotCMDTaskChassisBoard(void)
             chassis_cmd_send.vy = chassis_rs485_recv.vy;
             chassis_cmd_send.wz = chassis_rs485_recv.wz;
             if (rc_data[TEMP].rc.switch_right != RC_SW_UP)
-            chassis_cmd_send.chassis_mode = chassis_rs485_recv.chassis_mode;
+                chassis_cmd_send.chassis_mode = chassis_rs485_recv.chassis_mode;
             chassis_cmd_send.offset_angle = chassis_rs485_recv.offset_angle;
             chassis_cmd_send.gimbal_error_angle = chassis_rs485_recv.gimbal_error_angle;
             chassis_cmd_send.SuperCap_flag_from_user = chassis_rs485_recv.superCap_flag;
