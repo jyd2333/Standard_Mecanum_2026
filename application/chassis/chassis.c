@@ -162,7 +162,7 @@ static PIDInstance Leg_Diff_PID = {
 };
 /*---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
 // 收腿平滑参数，避免切到收腿模式时姿态和同步带指令突变
-#define LEG_CLIMB_DIP_TARGET        0.1f
+#define LEG_CLIMB_DIP_TARGET        0.05f
 #define LEG_RETRACT_DIP_TARGET     -0.1f
 #define LEG_DIP_SLEW_STEP           0.0010f
 #define LEG_FOLLOW_KP_SLEW_STEP     1.0f

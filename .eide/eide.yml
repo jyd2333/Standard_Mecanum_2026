@@ -10,7 +10,6 @@ srcDirs:
   - Drivers
   - application
   - bsp
-  - build
   - Inc
   - modules
 virtualFolder:
@@ -103,6 +102,7 @@ targets:
         - modules/algorithm
         - Middlewares/ST/ARM/DSP/Lib
     excludeList:
+      - build/**/*.c
       - application/chassis/tempCodeRunnerFile.c
       - application/chassis/Chassis1.c
     settings:
@@ -174,7 +174,8 @@ targets:
         - Drivers/CMSIS/Include
         - Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS_V2
       libList: []
-    excludeList: []
+    excludeList:
+      - build/**/*.c
     settings:
       debugger: cortex-debug
     toolchain: GCC

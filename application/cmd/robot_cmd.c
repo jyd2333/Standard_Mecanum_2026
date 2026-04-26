@@ -117,17 +117,10 @@ float vision_yaw_vel = 0; // 视觉提供的yaw速度前馈
 uint8_t SuperCap_flag_from_user = 0; // 超电标志位
 uint8_t rc_update_flag = 0;//遥控器数据更新标志位（防止同一个周期多次触发）
 static uint8_t mecanum_force_ctrl_enable = 0u; // 麦轮力控独立开关（与 chassis_mode 解耦）
-static chassis_mode_e remote_climb_mode = CHASSIS_CLIMB_RETRACT;
 
-static chassis_mode_e CycleRemoteClimbMode(chassis_mode_e current_mode)
+static chassis_mode_e GetRemoteClimbMode(void)
 {
-    switch (current_mode) {
-        case CHASSIS_CLIMB:
-            return CHASSIS_CLIMB_RETRACT;
-        case CHASSIS_CLIMB_RETRACT:
-        default:
-            return CHASSIS_CLIMB;
-    }
+    return (rc_data[TEMP].rc.switch_left == RC_SW_DOWN) ? CHASSIS_CLIMB_RETRACT : CHASSIS_CLIMB;
 }
 
 void RobotCMDSetMecanumForceCtrl(uint8_t enable)
@@ -716,7 +709,6 @@ static void EmergencyHandler()
     shoot_cmd_send.load_mode      = LOAD_STOP;
     shoot_cmd_send.shoot_mode     = SHOOT_OFF;
     SuperCap_flag_from_user     = SUPERCAP_UNUSE;
-    remote_climb_mode = CHASSIS_CLIMB_RETRACT;
     memset(rc_mode, 1, sizeof(uint8_t));
     memset(rc_mode + 1, 0, sizeof(uint8_t) * 4);
     LOGERROR("[CMD] emergency stop!");
@@ -795,13 +787,8 @@ static void RemoteControlSet()
                 break;
 
             case RC_SW_DOWN:
-                // 单独给爬坡模式的收腿切换：左拨杆 MID->DOWN 触发收腿
-                // 仅在右拨杆为 UP（爬坡家族）时生效，避免与常规射击触发冲突
-                if (rc_data[LAST].rc.switch_left == RC_SW_MID &&
-                    rc_data[TEMP].rc.switch_right == RC_SW_UP)
-                {
-                    //remote_climb_mode = CHASSIS_CLIMB_RETRACT;
-                    remote_climb_mode = CycleRemoteClimbMode(remote_climb_mode);
+                // 右拨杆上位时，左拨杆下位只作为收腿输入，不触发射击。
+                if (rc_data[TEMP].rc.switch_right == RC_SW_UP) {
                     break;
                 }
 
@@ -828,24 +815,18 @@ static void RemoteControlSet()
                 break;
         }
 
-        // if (rc_data[TEMP].rc.switch_right == RC_SW_UP &&
-        //     rc_data[LAST].rc.switch_right == RC_SW_MID)
-        // {
-        //     remote_climb_mode = CycleRemoteClimbMode(remote_climb_mode);
-        // }
-
         rc_update_flag = 0;
     }
 
     // 右侧三段开关：底盘模式主切换（固定档位映射）
     // 该映射按“当前档位”每周期生效，不依赖 rc_update_flag。
-    // UP:   爬坡家族。每次 MID->UP 在 CLIMB / RETRACT 间切换，首次进入为 CLIMB
+    // UP:   爬坡家族。左拨杆下位时收腿，其他位置普通爬坡
     // MID:  跟随云台
     // DOWN: 小陀螺
     switch (rc_data[TEMP].rc.switch_right)
     {
         case RC_SW_UP:
-            chassis_cmd_send.chassis_mode = remote_climb_mode;
+            chassis_cmd_send.chassis_mode = GetRemoteClimbMode();
             break;
         case RC_SW_DOWN:
             chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
@@ -1382,10 +1363,10 @@ static void RobotCMDTaskChassisBoard(void)
             chassis_cmd_send.mecanum_force_enable = (chassis_rs485_recv.UI_SendFlag & MECANUM_FORCE_UI_FLAG_BIT) ? 1u : 0u;
         }
     }
-    // 最终态保护：右拨杆在 UP 时，底盘模式始终由本地爬坡模式机决定
-    // 防止前面链路（如串口同步）把 CLIMB_RETRACT 覆盖掉
+    // 最终态保护：右拨杆在 UP 时，底盘模式始终由本地左右拨杆判定
+    // 防止前面链路（如串口同步）覆盖爬坡/收腿选择。
     if (rc_data[TEMP].rc.switch_right == RC_SW_UP) {
-        chassis_cmd_send.chassis_mode = remote_climb_mode;
+        chassis_cmd_send.chassis_mode = GetRemoteClimbMode();
     }
 
     RobotCMDUpdateShootReferee(referee_data->GameRobotState.shooter_id1_42mm_cooling_rate,
