@@ -166,7 +166,9 @@ static PIDInstance Leg_Diff_PID = {
 #define LEG_RETRACT_DIP_TARGET     -0.1f
 #define LEG_DIP_SLEW_STEP           0.0010f
 #define LEG_FOLLOW_KP_SLEW_STEP     1.0f
-#define LEG_SYNC_BELT_SLEW_STEP    25.0f
+#define LEG_SYNC_BELT_SLEW_STEP    350.0f
+#define LEG_SYNC_BELT_PRELOAD_REF  8000.0f
+#define LEG_SYNC_BELT_MAX_REF      15000.0f
 #define SYNC_BELT_DIRECTION_DEADBAND 10.0f
 #define LEG_RETRACT_TARGET_LENGTH_MIN   0.125f
 #define LEG_RETRACT_TARGET_LENGTH_STEP  0.0016f
@@ -179,10 +181,41 @@ static PIDInstance Leg_Diff_PID = {
 #define LEG_RETRACT_TORQUE_MAX        12.0f
 #define LEG_RETRACT_MANUAL_BOOST_TORQUE 25.0f
 #define LEG_RETRACT_MANUAL_TORQUE_LIMIT 28.0f
+#define LEG_MANUAL_PRELOAD_COUNT        100u
+#define LEG_MANUAL_PRELOAD_DIP_TARGET   0.10f
+#define LEG_MANUAL_PRELOAD_TORQUE       6.0f
 #define LEG_RETRACT_LIMIT_TORQUE_THRESHOLD 18.0f
 #define LEG_RETRACT_LIMIT_VEL_THRESHOLD     0.20f
 #define LEG_RETRACT_LIMIT_DETECT_COUNT      25u
 #define LEG_RETRACT_HOLD_TORQUE_MIN         4.0f
+#define LEG_AUTO_RETRACT_VX_THRESHOLD       8000.0f
+#define LEG_AUTO_RETRACT_PITCH_ERR_TRIGGER  0.045f
+#define LEG_AUTO_RETRACT_PITCH_ERR_MAX      0.120f
+#define LEG_AUTO_RETRACT_PITCH_GYRO_TRIGGER 0.70f
+#define LEG_AUTO_RETRACT_PITCH_GYRO_MAX     1.80f
+#define LEG_AUTO_RETRACT_TORQUE_TRIGGER     6.0f
+#define LEG_AUTO_RETRACT_TORQUE_MAX_TRIGGER 12.0f
+#define LEG_AUTO_RETRACT_DURATION_COUNT     220u
+#define LEG_AUTO_RETRACT_COOLDOWN_COUNT     120u
+#define LEG_AUTO_RETRACT_REARM_COUNT        180u
+#define LEG_AUTO_RETRACT_BOOST_TORQUE       10.0f
+#define LEG_AUTO_RETRACT_TORQUE_LIMIT       18.0f
+#define LEG_AUTO_RETRACT_SYNC_BELT_REF      10000.0f
+#define LEG_AUTO_RETRACT_RECOVER_PITCH_ERR  0.025f
+#define LEG_AUTO_RETRACT_RECOVER_PITCH_GYRO 0.35f
+#define LEG_AUTO_RETRACT_RECOVER_TORQUE     4.0f
+#define LEG_EDGE_HIT_VX_THRESHOLD           6000.0f
+#define LEG_EDGE_HIT_TORQUE_TRIGGER         10.0f
+#define LEG_EDGE_HIT_JOINT_VEL_THRESHOLD    0.35f
+#define LEG_EDGE_HIT_PITCH_ERR_TRIGGER      0.060f
+#define LEG_EDGE_HIT_PITCH_GYRO_TRIGGER     0.77f
+#define LEG_EDGE_HIT_DETECT_COUNT           6u
+#define LEG_EDGE_HIT_PRELOAD_COUNT          100u
+#define LEG_EDGE_HIT_RETRACT_COUNT          260u
+#define LEG_EDGE_HIT_REARM_COUNT            220u
+#define LEG_EDGE_HIT_BOOST_TORQUE           22.0f
+#define LEG_EDGE_HIT_TORQUE_LIMIT           26.0f
+#define LEG_EDGE_HIT_SYNC_BELT_REF          14000.0f
 
 void ChassisInit()
 {
@@ -917,7 +950,95 @@ static uint8_t LegRetractManualBoostEnabled(void)
     if (!RemoteControlIsOnline())
         return 0u;
 
+    if (rc_ctrl[TEMP].rc.switch_right == RC_SW_UP &&
+        rc_ctrl[TEMP].rc.switch_left == RC_SW_DOWN)
+        return 1u;
+
     if (rc_ctrl[TEMP].key[KEY_PRESS].z != 0u)
+        return 1u;
+
+    return 0u;
+}
+
+static uint8_t LegAutoRetractTrigger(float pitch_target)
+{
+    float pitch_err;
+    float pitch_gyro_abs;
+    float torque_avg_abs;
+
+    if (chassis_cmd_recv.chassis_mode != CHASSIS_CLIMB)
+        return 0u;
+
+    if (chassis_cmd_recv.vx < LEG_AUTO_RETRACT_VX_THRESHOLD)
+        return 0u;
+
+    pitch_err = Chassis_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET] - pitch_target;
+    pitch_gyro_abs = fabsf(Chassis_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET]);
+    torque_avg_abs = (fabsf(joint_l->measure.tor) + fabsf(joint_r->measure.tor)) * 0.5f;
+
+    if (pitch_err > LEG_AUTO_RETRACT_PITCH_ERR_MAX ||
+        pitch_gyro_abs > LEG_AUTO_RETRACT_PITCH_GYRO_MAX ||
+        torque_avg_abs > LEG_AUTO_RETRACT_TORQUE_MAX_TRIGGER)
+        return 0u;
+
+    if (pitch_err > LEG_AUTO_RETRACT_PITCH_ERR_TRIGGER)
+        return 1u;
+
+    if (pitch_gyro_abs > LEG_AUTO_RETRACT_PITCH_GYRO_TRIGGER)
+        return 1u;
+
+    if (torque_avg_abs > LEG_AUTO_RETRACT_TORQUE_TRIGGER)
+        return 1u;
+
+    return 0u;
+}
+
+static uint8_t LegAutoRetractRecovered(float pitch_target)
+{
+    float pitch_err_abs = fabsf(Chassis_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET] - pitch_target);
+    float pitch_gyro_abs = fabsf(Chassis_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET]);
+    float torque_avg_abs = (fabsf(joint_l->measure.tor) + fabsf(joint_r->measure.tor)) * 0.5f;
+
+    return (pitch_err_abs < LEG_AUTO_RETRACT_RECOVER_PITCH_ERR &&
+            pitch_gyro_abs < LEG_AUTO_RETRACT_RECOVER_PITCH_GYRO &&
+            torque_avg_abs < LEG_AUTO_RETRACT_RECOVER_TORQUE) ? 1u : 0u;
+}
+
+static uint8_t LegEdgeHitDetected(float pitch_target)
+{
+    float pitch_err;
+    float pitch_gyro;
+    float torque_l_abs;
+    float torque_r_abs;
+    float torque_max_abs;
+    float joint_vel_l_abs;
+    float joint_vel_r_abs;
+    uint8_t joint_stalled;
+
+    if (chassis_cmd_recv.chassis_mode != CHASSIS_CLIMB)
+        return 0u;
+
+    if (chassis_cmd_recv.vx < LEG_EDGE_HIT_VX_THRESHOLD)
+        return 0u;
+
+    pitch_err = Chassis_IMU_data->output.INS_angle[INS_PITCH_ADDRESS_OFFSET] - pitch_target;
+    pitch_gyro = Chassis_IMU_data->INS_data.INS_gyro[INS_PITCH_ADDRESS_OFFSET];
+    torque_l_abs = fabsf(joint_l->measure.tor);
+    torque_r_abs = fabsf(joint_r->measure.tor);
+    torque_max_abs = (torque_l_abs > torque_r_abs) ? torque_l_abs : torque_r_abs;
+    joint_vel_l_abs = fabsf(joint_l->measure.vel);
+    joint_vel_r_abs = fabsf(joint_r->measure.vel);
+    joint_stalled = (joint_vel_l_abs < LEG_EDGE_HIT_JOINT_VEL_THRESHOLD ||
+                     joint_vel_r_abs < LEG_EDGE_HIT_JOINT_VEL_THRESHOLD) ? 1u : 0u;
+
+    if (torque_max_abs < LEG_EDGE_HIT_TORQUE_TRIGGER)
+        return 0u;
+
+    if (!joint_stalled)
+        return 0u;
+
+    if (pitch_err > LEG_EDGE_HIT_PITCH_ERR_TRIGGER ||
+        pitch_gyro > LEG_EDGE_HIT_PITCH_GYRO_TRIGGER)
         return 1u;
 
     return 0u;
@@ -1118,6 +1239,22 @@ void ChassisTask()
     static uint16_t retract_limit_cnt_l = 0u;
     static uint16_t retract_limit_cnt_r = 0u;
     static uint8_t retract_limit_latched = 0u;
+    static uint16_t auto_retract_cnt = 0u;
+    static uint16_t auto_retract_cooldown_cnt = 0u;
+    static uint16_t auto_retract_rearm_cnt = 0u;
+    static uint8_t auto_retract_armed = 1u;
+    static uint16_t edge_hit_cnt = 0u;
+    static uint16_t edge_hit_preload_cnt = 0u;
+    static uint16_t edge_hit_retract_cnt = 0u;
+    static uint16_t edge_hit_rearm_cnt = 0u;
+    static uint8_t edge_hit_armed = 1u;
+    static uint16_t manual_preload_cnt = 0u;
+    static uint8_t manual_retract_last = 0u;
+    uint8_t manual_retract_request = 0u;
+    uint8_t manual_preload_active = 0u;
+    uint8_t auto_retract_active = 0u;
+    uint8_t edge_hit_preload_active = 0u;
+    uint8_t edge_hit_retract_active = 0u;
     float chassis_follow_kp_target = 105.0f;
 
     // offset_angle       = chassis_cmd_recv.offset_angle + chassis_cmd_recv.gimbal_error_angle;
@@ -1236,6 +1373,108 @@ void ChassisTask()
             break;
         //航向同样跟随，腿模式换成 LEG_CLIMB_RETRACT，用于回收/收腿。
     }
+
+    if (chassis_cmd_recv.chassis_mode == CHASSIS_CLIMB) {
+        if (auto_retract_cooldown_cnt > 0u)
+            auto_retract_cooldown_cnt--;
+
+        if (auto_retract_cnt == 0u && !auto_retract_armed) {
+            if (LegAutoRetractRecovered(LEG_CLIMB_DIP_TARGET)) {
+                if (auto_retract_rearm_cnt < LEG_AUTO_RETRACT_REARM_COUNT)
+                    auto_retract_rearm_cnt++;
+                if (auto_retract_rearm_cnt >= LEG_AUTO_RETRACT_REARM_COUNT)
+                    auto_retract_armed = 1u;
+            } else {
+                auto_retract_rearm_cnt = 0u;
+            }
+        }
+
+        if (auto_retract_cnt == 0u &&
+            auto_retract_armed &&
+            auto_retract_cooldown_cnt == 0u &&
+            LegAutoRetractTrigger(LEG_CLIMB_DIP_TARGET)) {
+            auto_retract_cnt = LEG_AUTO_RETRACT_DURATION_COUNT;
+            auto_retract_armed = 0u;
+            auto_retract_rearm_cnt = 0u;
+        }
+
+        if (auto_retract_cnt > 0u) {
+            auto_retract_cnt--;
+            auto_retract_active = 1u;
+            leg_mode = LEG_CLIMB_RETRACT;
+            if (auto_retract_cnt == 0u)
+                auto_retract_cooldown_cnt = LEG_AUTO_RETRACT_COOLDOWN_COUNT;
+        }
+    } else {
+        auto_retract_cnt = 0u;
+        auto_retract_cooldown_cnt = 0u;
+        auto_retract_rearm_cnt = 0u;
+        auto_retract_armed = 1u;
+    }
+
+    if (chassis_cmd_recv.chassis_mode == CHASSIS_CLIMB) {
+        if (edge_hit_preload_cnt == 0u && edge_hit_retract_cnt == 0u && !edge_hit_armed) {
+            if (LegAutoRetractRecovered(LEG_CLIMB_DIP_TARGET)) {
+                if (edge_hit_rearm_cnt < LEG_EDGE_HIT_REARM_COUNT)
+                    edge_hit_rearm_cnt++;
+                if (edge_hit_rearm_cnt >= LEG_EDGE_HIT_REARM_COUNT)
+                    edge_hit_armed = 1u;
+            } else {
+                edge_hit_rearm_cnt = 0u;
+            }
+        }
+
+        if (edge_hit_preload_cnt == 0u &&
+            edge_hit_retract_cnt == 0u &&
+            edge_hit_armed) {
+            if (LegEdgeHitDetected(LEG_CLIMB_DIP_TARGET)) {
+                if (edge_hit_cnt < LEG_EDGE_HIT_DETECT_COUNT)
+                    edge_hit_cnt++;
+            } else {
+                edge_hit_cnt = 0u;
+            }
+
+            if (edge_hit_cnt >= LEG_EDGE_HIT_DETECT_COUNT) {
+                edge_hit_preload_cnt = LEG_EDGE_HIT_PRELOAD_COUNT;
+                edge_hit_retract_cnt = LEG_EDGE_HIT_RETRACT_COUNT;
+                edge_hit_armed = 0u;
+                edge_hit_cnt = 0u;
+                edge_hit_rearm_cnt = 0u;
+                auto_retract_cnt = 0u;
+                auto_retract_active = 0u;
+            }
+        }
+
+        if (edge_hit_preload_cnt > 0u) {
+            edge_hit_preload_active = 1u;
+            edge_hit_preload_cnt--;
+            leg_mode = LEG_CLIMB_RETRACT;
+        } else if (edge_hit_retract_cnt > 0u) {
+            edge_hit_retract_active = 1u;
+            edge_hit_retract_cnt--;
+            leg_mode = LEG_CLIMB_RETRACT;
+        }
+    } else {
+        edge_hit_cnt = 0u;
+        edge_hit_preload_cnt = 0u;
+        edge_hit_retract_cnt = 0u;
+        edge_hit_rearm_cnt = 0u;
+        edge_hit_armed = 1u;
+    }
+
+    manual_retract_request = (leg_mode == LEG_CLIMB_RETRACT) ? LegRetractManualBoostEnabled() : 0u;
+    if (manual_retract_request) {
+        if (!manual_retract_last)
+            manual_preload_cnt = LEG_MANUAL_PRELOAD_COUNT;
+    } else {
+        manual_preload_cnt = 0u;
+    }
+    manual_retract_last = manual_retract_request;
+
+    if (manual_preload_cnt > 0u) {
+        manual_preload_active = 1u;
+        manual_preload_cnt--;
+    }
     // {
     //     float sync_belt_left_ref  = 0.0f;
     //     float sync_belt_right_ref = 0.0f;
@@ -1301,6 +1540,10 @@ void ChassisTask()
             chassis_follow_kp_target = 105.0f;
             break;
     }
+    if (manual_preload_active || edge_hit_preload_active) {
+        dipAngleTarget = LEG_MANUAL_PRELOAD_DIP_TARGET;
+        chassis_follow_kp_target = 105.0f;
+    }
     dipAngle += clamp_absf(dipAngleTarget - dipAngle, LEG_DIP_SLEW_STEP);
     Chassis_Follow_PID.Kp += clamp_absf(chassis_follow_kp_target - Chassis_Follow_PID.Kp, LEG_FOLLOW_KP_SLEW_STEP);
 /*--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------*/
@@ -1364,7 +1607,7 @@ void ChassisTask()
     if (leg_mode == LEG_CLIMB_RETRACT) {
         float retract_torque_l = 0.0f;
         float retract_torque_r = 0.0f;
-        uint8_t retract_manual_boost = LegRetractManualBoostEnabled();
+        uint8_t retract_manual_boost = (manual_retract_request && !manual_preload_active) ? 1u : 0u;
 
         if (!retract_limit_latched) {
             if (retract_manual_boost &&
@@ -1404,6 +1647,9 @@ void ChassisTask()
                 retract_torque_l = LEG_RETRACT_TORQUE_MAX;
             if (retract_torque_r > LEG_RETRACT_TORQUE_MAX)
                 retract_torque_r = LEG_RETRACT_TORQUE_MAX;
+        } else if (manual_preload_active || edge_hit_preload_active) {
+            retract_torque_l = -LEG_MANUAL_PRELOAD_TORQUE;
+            retract_torque_r = -LEG_MANUAL_PRELOAD_TORQUE;
         } else if (retract_manual_boost) {
             retract_torque_l = CalcRetractTorqueFeedforward(angle_l) + LEG_RETRACT_MANUAL_BOOST_TORQUE;
             retract_torque_r = CalcRetractTorqueFeedforward(angle_r) + LEG_RETRACT_MANUAL_BOOST_TORQUE;
@@ -1412,6 +1658,22 @@ void ChassisTask()
                 retract_torque_l = LEG_RETRACT_MANUAL_TORQUE_LIMIT;
             if (retract_torque_r > LEG_RETRACT_MANUAL_TORQUE_LIMIT)
                 retract_torque_r = LEG_RETRACT_MANUAL_TORQUE_LIMIT;
+        } else if (edge_hit_retract_active) {
+            retract_torque_l = CalcRetractTorqueFeedforward(angle_l) + LEG_EDGE_HIT_BOOST_TORQUE;
+            retract_torque_r = CalcRetractTorqueFeedforward(angle_r) + LEG_EDGE_HIT_BOOST_TORQUE;
+
+            if (retract_torque_l > LEG_EDGE_HIT_TORQUE_LIMIT)
+                retract_torque_l = LEG_EDGE_HIT_TORQUE_LIMIT;
+            if (retract_torque_r > LEG_EDGE_HIT_TORQUE_LIMIT)
+                retract_torque_r = LEG_EDGE_HIT_TORQUE_LIMIT;
+        } else if (auto_retract_active) {
+            retract_torque_l = CalcRetractTorqueFeedforward(angle_l) + LEG_AUTO_RETRACT_BOOST_TORQUE;
+            retract_torque_r = CalcRetractTorqueFeedforward(angle_r) + LEG_AUTO_RETRACT_BOOST_TORQUE;
+
+            if (retract_torque_l > LEG_AUTO_RETRACT_TORQUE_LIMIT)
+                retract_torque_l = LEG_AUTO_RETRACT_TORQUE_LIMIT;
+            if (retract_torque_r > LEG_AUTO_RETRACT_TORQUE_LIMIT)
+                retract_torque_r = LEG_AUTO_RETRACT_TORQUE_LIMIT;
         }
 
         length_diff_tor = 0.0f;
@@ -1451,11 +1713,26 @@ void ChassisTask()
             case CHASSIS_CLIMB_WITH_PULL:
             case CHASSIS_CLIMB_WITH_PUSH:
             case CHASSIS_CLIMB_RETRACT:
+            {
+                float sync_belt_forward_add_ref = SYNC_BELT_SWITCH_SPEED_REF;
+                if (edge_hit_preload_active || edge_hit_retract_active)
+                    sync_belt_forward_add_ref = LEG_EDGE_HIT_SYNC_BELT_REF;
+                else if (auto_retract_active)
+                    sync_belt_forward_add_ref = LEG_AUTO_RETRACT_SYNC_BELT_REF;
+
                 if (chassis_vx > SYNC_BELT_DIRECTION_DEADBAND)
-                    sync_belt_ref_target = SYNC_BELT_SWITCH_SPEED_REF;
+                    sync_belt_ref_target = LEG_SYNC_BELT_PRELOAD_REF + sync_belt_forward_add_ref;
                 else if (chassis_vx < -SYNC_BELT_DIRECTION_DEADBAND)
-                    sync_belt_ref_target = -SYNC_BELT_SWITCH_SPEED_REF;
+                    sync_belt_ref_target = -(LEG_SYNC_BELT_PRELOAD_REF + sync_belt_forward_add_ref);
+                else
+                    sync_belt_ref_target = LEG_SYNC_BELT_PRELOAD_REF;
+
+                if (sync_belt_ref_target > LEG_SYNC_BELT_MAX_REF)
+                    sync_belt_ref_target = LEG_SYNC_BELT_MAX_REF;
+                else if (sync_belt_ref_target < -LEG_SYNC_BELT_MAX_REF)
+                    sync_belt_ref_target = -LEG_SYNC_BELT_MAX_REF;
                 break;
+            }
             default:
                 break;
         }
